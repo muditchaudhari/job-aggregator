@@ -1,0 +1,128 @@
+<!doctype html>
+<!--
+  A fictional company's hand-built careers page, used by DEMO.md.
+
+  Deliberately matches NONE of the built-in selectors:
+    * roles are <article class="role-card">, not <li class="job-*">
+    * links are /openings/NNN, which no built-in pattern targets
+    * it ships no JSON-LD, no __NEXT_DATA__, no framework state
+
+  So the extraction ladder has to fall all the way to tier 5 and ask the model
+  how to read it — which is the thing the demo exists to show. It also carries
+  realistic noise (nav, cookie banner, footer, analytics) so the HTML reducer
+  has something to strip.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Careers — Northwind Labs</title>
+  <style>
+    body{font-family:system-ui,sans-serif;max-width:900px;margin:0 auto;padding:2rem;color:#111}
+    .role-card{border:1px solid #ddd;border-radius:8px;padding:1rem;margin:.75rem 0}
+    .role-title{font-size:1.1rem;font-weight:600;margin:0 0 .35rem}
+    .role-meta{color:#666;font-size:.9rem}
+    .role-meta span{margin-right:1rem}
+    nav a,footer a{margin-right:1rem;color:#555}
+    #cookie{background:#f4f4f4;padding:.75rem;border-radius:6px;margin-bottom:1rem}
+  </style>
+  <script>window.analytics={track:function(){}};window.analytics.track('careers_view');</script>
+</head>
+<body>
+  <div id="cookie">We use cookies. <a href="/privacy">Privacy policy</a> · <a href="/cookies">Manage</a></div>
+
+  <nav>
+    <a href="/">Home</a><a href="/about">About us</a><a href="/product">Product</a>
+    <a href="/blog">Blog</a><a href="/contact">Contact</a>
+  </nav>
+
+  <h1>Work at Northwind Labs</h1>
+  <p>We're a distributed team building data infrastructure. Open roles below.</p>
+
+  <section id="roles">
+    <article class="role-card">
+      <p class="role-title"><a href="/openings/4101">Senior Backend Engineer</a></p>
+      <p class="role-meta">
+        <span class="role-place">Bangalore, India</span>
+        <span class="role-team">Platform</span>
+        <span class="role-type">Full-time</span>
+        <span class="role-posted">Posted 2 days ago</span>
+      </p>
+    </article>
+
+    <article class="role-card">
+      <p class="role-title"><a href="/openings/4102">Backend Engineer, Payments</a></p>
+      <p class="role-meta">
+        <span class="role-place">Bangalore, India</span>
+        <span class="role-team">Payments</span>
+        <span class="role-type">Full-time</span>
+        <span class="role-posted">Posted yesterday</span>
+      </p>
+    </article>
+
+    <article class="role-card">
+      <p class="role-title"><a href="/openings/4103">Full Stack Engineer (React / Python)</a></p>
+      <p class="role-meta">
+        <span class="role-place">Remote — India</span>
+        <span class="role-team">Product</span>
+        <span class="role-type">Full-time</span>
+        <span class="role-posted">Posted today</span>
+      </p>
+    </article>
+
+    <article class="role-card">
+      <p class="role-title"><a href="/openings/4104">Software Engineer, Data Platform</a></p>
+      <p class="role-meta">
+        <span class="role-place">Bengaluru, Karnataka</span>
+        <span class="role-team">Data</span>
+        <span class="role-type">Full-time</span>
+        <span class="role-posted">Posted 5 days ago</span>
+      </p>
+    </article>
+
+    <article class="role-card">
+      <p class="role-title"><a href="/openings/4105">Staff Site Reliability Engineer</a></p>
+      <p class="role-meta">
+        <span class="role-place">Bangalore, India</span>
+        <span class="role-team">Infrastructure</span>
+        <span class="role-type">Full-time</span>
+        <span class="role-posted">Posted 1 week ago</span>
+      </p>
+    </article>
+
+    <article class="role-card">
+      <p class="role-title"><a href="/openings/4106">Enterprise Sales Manager</a></p>
+      <p class="role-meta">
+        <span class="role-place">Mumbai, India</span>
+        <span class="role-team">Revenue</span>
+        <span class="role-type">Full-time</span>
+        <span class="role-posted">Posted 3 days ago</span>
+      </p>
+    </article>
+
+    <article class="role-card">
+      <p class="role-title"><a href="/openings/4107">Principal Engineer, Distributed Systems</a></p>
+      <p class="role-meta">
+        <span class="role-place">Remote — Global</span>
+        <span class="role-team">Core</span>
+        <span class="role-type">Full-time</span>
+        <span class="role-posted">Posted 4 days ago</span>
+      </p>
+    </article>
+
+    <article class="role-card">
+      <p class="role-title"><a href="/openings/4108">Junior Java Developer</a></p>
+      <p class="role-meta">
+        <span class="role-place">Bangalore, India</span>
+        <span class="role-team">Platform</span>
+        <span class="role-type">Full-time</span>
+        <span class="role-posted">Posted 6 days ago</span>
+      </p>
+    </article>
+  </section>
+
+  <footer>
+    <a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/press">Press</a>
+    <p>© Northwind Labs</p>
+  </footer>
+</body>
+</html>

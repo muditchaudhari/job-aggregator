@@ -1,0 +1,82 @@
+# What you are looking for.
+#
+# Used to score every job that gets fetched. Skills live in skills.txt and
+# portal links in portals.txt — this file is everything else.
+
+email: muditchaudhari@gmail.com
+full_name: Mudit Chaudhari
+
+# --- Role -------------------------------------------------------------------
+# Partial word overlap counts, so "Backend Engineer" also scores
+# "Senior Backend Engineer, Payments".
+roles:
+  - Software Engineer
+  - Backend Engineer
+  - Full Stack Engineer
+  - Software Development Engineer
+  # Adobe (and several other large firms) do not use "Software Engineer" as a
+  # title at all — their equivalent ladder is Member of Technical Staff.
+  # Listing it here is what makes those roles rank.
+  - Member of Technical Staff
+
+# --- Experience -------------------------------------------------------------
+years_experience: 2
+
+# intern | junior | mid | senior | staff | lead | manager | principal | director
+# A posting more than one level above this is scored down hard — a Principal
+# role is not a realistic application at 2 years however well the skills line up.
+seniority: junior
+
+# How many levels above yours you are willing to see, as a hard filter.
+#   0 = your level only
+#   1 = allow one stretch level (default)
+#   9 = effectively off
+# At 2 years, a "Software Development Engineer 4" wanting 8+ years is not a
+# realistic application — this is what keeps it off the list rather than just
+# ranking it lower.
+max_seniority_gap: 1
+
+# --- Location ---------------------------------------------------------------
+# Matched against the raw location text as well as the parsed city/country, so
+# list every spelling you care about. Boards write "Bangalore" and "Bengaluru"
+# interchangeably and neither matches the other automatically.
+locations:
+  - Bangalore
+  - Bengaluru
+  - Karnataka
+  - Remote
+
+# remote_only | hybrid_ok | onsite_ok | any
+remote_preference: any
+
+# Most postings never state a location clearly. Set true to keep those rather
+# than discard them.
+include_unknown_location: false
+
+# --- Automation -------------------------------------------------------------
+# How often each portal is re-scanned when running in the background
+# (`make start`). The scheduler ticks every 5 minutes and picks up whatever is
+# due, so anything from 5 upwards is honoured.
+#
+# Only genuinely NEW postings are emailed: the first scan of a company records
+# its board silently, and every posting is de-duplicated thereafter, so a
+# 30-minute cadence does not mean a mail every 30 minutes.
+scan_every_minutes: 30
+
+# --- Filtering --------------------------------------------------------------
+# Hard veto: any of these in a title or description disqualifies the posting
+# outright, whatever else it scores.
+exclude:
+  - Sales
+  - Unpaid
+  - Director
+  - Vice President
+  - Principal
+
+# Only show jobs scoring at or above this (0 to 1). Lower it to see more.
+match_threshold: 0.6
+
+# Optional
+# desired_salary_min: 2000000
+# salary_currency: INR
+# requires_visa_sponsorship: false

@@ -1,0 +1,120 @@
+# One image, four process types (AD-1): api, worker, beat, plus a one-shot
+# migration job. Everything shares the same build so a deploy cannot ship an
+# API and a worker running different code.
+
+x-app: &app
+  build:
+    context: .
+    dockerfile: Dockerfile
+  env_file: .env
+  environment:
+    DATABASE_URL: postgresql+psycopg://jobs:jobs@postgres:5432/jobs
+    REDIS_URL: redis://redis:6379/0
+    CELERY_BROKER_URL: redis://redis:6379/1
+    CELERY_RESULT_BACKEND: redis://redis:6379/2
+    SMTP_HOST: mailpit
+    SMTP_PORT: "1025"
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: jobs
+      POSTGRES_PASSWORD: jobs
+      POSTGRES_DB: jobs
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      # Dependent services must wait for readiness, not just for the container
+      # to exist — Postgres accepts connections seconds after it starts.
+      test: ["CMD-SHELL", "pg_isready -U jobs -d jobs"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Local SMTP sink with a web UI, so notification delivery can be exercised
+  # end to end without sending real mail to anyone.
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    restart: unless-stopped
+
+  migrate:
+    <<: *app
+    command: alembic upgrade head
+    restart: "no"
+
+  api:
+    <<: *app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  worker:
+    <<: *app
+    # Concurrency 4, not 16: each slot may hold a browser context, and memory
+    # is the binding constraint on a scraping worker, not CPU.
+    command: >
+      celery -A app.scheduler.celery_app.celery_app worker
+      --loglevel=info
+      --concurrency=4
+      --queues=scrape,notify,maintenance,celery
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    # Chromium exhausts the default 64 MB /dev/shm and crashes on heavy pages.
+    shm_size: 1gb
+
+  beat:
+    <<: *app
+    command: >
+      celery -A app.scheduler.celery_app.celery_app beat
+      --loglevel=info
+      --schedule=/tmp/celerybeat-schedule
+    depends_on:
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  postgres_data:
+  redis_data:

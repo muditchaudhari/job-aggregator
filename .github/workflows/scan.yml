@@ -1,0 +1,142 @@
+name: Scan job portals
+
+# Every 30 minutes. Two things worth knowing about GitHub's cron:
+#
+#  * It is best-effort. Runs are queued on shared infrastructure and can be
+#    delayed by several minutes at busy times (the top of the hour is the
+#    worst). Nothing here depends on exact timing, so that is fine.
+#  * A scheduled workflow is DISABLED automatically after 60 days without
+#    repository activity. The "heartbeat" step at the end pushes a one-line
+#    commit once a day, which counts as activity and keeps the schedule alive
+#    without your having to remember anything.
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch: # so you can also trigger a scan by hand from the Actions tab
+
+# A slow scan must never overlap with the next scheduled one: two processes
+# writing the same SQLite database would fight for the write lock, and both
+# could email the same posting.
+concurrency:
+  group: scan
+  cancel-in-progress: false
+
+permissions:
+  contents: write # only for the heartbeat commit
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    env:
+      # No Postgres and no Redis on a runner. SQLite holds the state and the
+      # LLM budget falls back to a per-process counter — see app/llm/budget.py.
+      DATABASE_URL: sqlite+pysqlite:///${{ github.workspace }}/state/jobs.db
+      ENVIRONMENT: production
+      LOG_JSON: "true"
+      LOG_LEVEL: INFO
+
+      # Delivery over HTTPS rather than SMTP: GitHub blocks outbound SMTP
+      # ports on hosted runners, so a mail server would never connect.
+      NOTIFY_CHANNELS: resend
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      RESEND_FROM: ${{ vars.RESEND_FROM || 'onboarding@resend.dev' }}
+
+      # Optional. Without a key the LLM tier is simply skipped and the four
+      # deterministic tiers do the work, which is where all of the configured
+      # portals are served from today.
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      LLM_ENABLED: ${{ secrets.GEMINI_API_KEY != '' }}
+
+      # Politeness. A datacentre IP is treated with more suspicion than a home
+      # one, so ask for less than a local run does.
+      SCRAPE_REQUESTS_PER_MINUTE_PER_DOMAIN: "20"
+      SCRAPE_RESPECT_ROBOTS: "true"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      # The database is state, not source: it holds which postings have already
+      # been seen, so only genuinely new ones are emailed. It is cached rather
+      # than committed because it grows to megabytes and a commit every 30
+      # minutes would bloat the repository past any use.
+      #
+      # If the cache is ever evicted the run rebuilds from scratch and records
+      # a silent BASELINE — no flood of mail about jobs you have already seen.
+      # That property is what makes a cache safe to rely on here.
+      - name: Restore scan state
+        id: state
+        uses: actions/cache/restore@v4
+        with:
+          path: state
+          key: scan-state-${{ github.run_id }}
+          restore-keys: scan-state-
+
+      - name: Cache Playwright browser
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-chromium
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          # The gemini extra carries google-genai. Without it a GEMINI_API_KEY
+          # would be accepted and then fail at the first call.
+          pip install -e ".[gemini]"
+          # Needed only by portals that render client-side. If this fails the
+          # run still succeeds: those portals report a transient failure and
+          # every API-backed portal is unaffected.
+          python -m playwright install chromium || echo "::warning::Playwright install failed; render tier unavailable"
+
+      - name: Scan and notify
+        run: |
+          mkdir -p state
+          python -m app.cli run --notify --jobs 4 --top 25
+
+      - name: Build report
+        if: always()
+        run: python -m app.cli results --html state/results.html || true
+
+      # A browsable copy of the same results the email contains, in case you
+      # want to look before the mail arrives.
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: results
+          path: state/results.html
+          retention-days: 3
+          if-no-files-found: ignore
+
+      - name: Save scan state
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: state
+          key: scan-state-${{ github.run_id }}
+
+      # Keeps the schedule from being auto-disabled at 60 days. Once a day is
+      # ample, and committing every run would add 48 commits a day for nothing.
+      - name: Heartbeat
+        if: always()
+        run: |
+          today="$(date -u +%F)"
+          if [ "$(cat .github/last-run.txt 2>/dev/null | cut -d' ' -f1)" = "$today" ]; then
+            echo "already recorded a run today; nothing to commit"
+            exit 0
+          fi
+          echo "$today $(date -u +%T) UTC" > .github/last-run.txt
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/last-run.txt
+          git commit -m "Record scan heartbeat for $today [skip ci]"
+          # Another run may have pushed since checkout; rebase rather than fail.
+          git pull --rebase --autostash origin "${GITHUB_REF_NAME}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"

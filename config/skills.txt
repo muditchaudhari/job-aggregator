@@ -1,0 +1,32 @@
+# Your skills — one per line.
+#
+# These are matched against each job's description and requirements. Matching
+# is whole-word, so "Go" will not match "Django" and "R" will not match "React".
+#
+# More is better: a skill you list but a posting never mentions simply shows up
+# under "missing", it does not count against you.
+
+Java
+Python
+JavaScript
+TypeScript
+SQL
+C++
+
+React
+Node.js
+Spring MVC
+REST API
+
+AWS
+Lambda
+DynamoDB
+Docker
+Kubernetes
+CI/CD
+
+System Design
+Microservices
+Distributed Systems
+Git
+Linux

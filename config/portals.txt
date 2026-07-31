@@ -1,0 +1,32 @@
+# Job portal links — one URL per line.
+#
+# Add any company careers page. You do not need to say what kind of site it is;
+# the tool works that out itself (Greenhouse, Lever, Ashby, Workday,
+# SmartRecruiters, SuccessFactors, Taleo, a React app, or plain HTML).
+#
+# Lines starting with # are ignored, so comment one out to skip it.
+# Optionally give it a name with a pipe:   <url> | <name>
+#
+# Then run:  make run
+
+https://boards.greenhouse.io/gitlab | GitLab
+https://jobs.apple.com/en-in/search?location=bengaluru-BGS | Apple
+https://apply.careers.microsoft.com/careers?domain=microsoft.com&hl=en&start=0&location=Bengaluru%2C++KA%2C++India&sort_by=distance&filter_distance=160&filter_include_remote=1&filter_include_relocation=0 | Microsoft
+# Adobe's whole board. Their keyword search is fuzzy and only applies to the
+# first page, so we pull everything and let preferences.yml do the filtering.
+https://careers.adobe.com/us/en/search-results | Adobe
+
+https://job-boards.greenhouse.io/razorpaysoftwareprivatelimited | Razorpay
+https://job-boards.eu.greenhouse.io/groww?offices%5B%5D=4018977101&offices%5B%5D=4018978101 | Groww
+https://visa.wd5.myworkdayjobs.com/Visa?locationCountry=c4f78be1a8f14da0ab49ce1162348a5e | Visa
+https://www.phonepe.com/careers/job-openings/ | PhonePe
+https://jobs.uber.com/en/jobs/?location=Bengaluru&radius=100 | Uber
+https://www.salesforce.com/company/careers/jobs/?country=India&region=Karn%C4%81taka&location=Bangalore&page=1 | Salesforce
+# ServiceNow answers non-browser clients with HTTP 403 (bot protection), so it
+# fails every run and inflates the failure count. Uncomment once we have a way
+# in — a render might get through, but that has not been tested.
+# https://careers.servicenow.com/jobs/?search=&country=India&region=Karnataka&location=Bangalore&pagesize=20 | ServiceNow
+
+# A hand-built careers page with no recognisable ATS. Uncomment after running
+# `make demo-page` in another terminal to watch the self-learning path.
+http://localhost:8080/careers.html | Northwind Labs
