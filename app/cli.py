@@ -308,6 +308,78 @@ def cmd_sync(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_test_email(args: argparse.Namespace) -> int:
+    """Send one sample alert through every configured channel.
+
+    The delivery path is the last thing a scan exercises and the first thing a
+    misconfiguration breaks, but it only runs when a genuinely new posting
+    clears the threshold — which can be days. This makes it testable on
+    demand, with an obviously fake posting so a test can never be mistaken for
+    a real opening.
+    """
+    from app.models.enums import NotificationChannel
+    from app.notifications.base import NotificationPayload
+    from app.notifications.channels import build_sender
+
+    config = load(Path(args.config))
+    settings = get_settings()
+
+    payload = NotificationPayload(
+        job_title="TEST — delivery check, not a real vacancy",
+        company_name="Job Aggregator",
+        location="Bengaluru, India",
+        url="https://github.com/muditchaudhari/job-aggregator",
+        match_score=1.0,
+        reasoning=(
+            "This is a test message confirming that email delivery works. "
+            "Real alerts look like this one and arrive only when a new posting "
+            "clears your match threshold."
+        ),
+        matched_skills=["python", "postgresql"],
+        missing_skills=[],
+        posted_date=None,
+        salary=None,
+        remote_type="unknown",
+        employment_type="full_time",
+    )
+
+    with session_scope() as session:
+        user = UserRepository(session).get_or_create(config.email, config.full_name)
+        channels = settings.enabled_notification_channels
+        if not channels:
+            print(f"{RED}no channels enabled{RESET} — set NOTIFY_CHANNELS")
+            return 1
+
+        print(f"sending to {BOLD}{user.email}{RESET} via: {', '.join(channels)}\n")
+        failures = 0
+        for name in channels:
+            try:
+                sender = build_sender(NotificationChannel(name))
+            except (ValueError, PlatformError) as exc:
+                print(f"  {RED}✗{RESET} {name}: {exc}")
+                failures += 1
+                continue
+
+            if not sender.is_configured():
+                print(f"  {RED}✗{RESET} {name}: not configured (missing credentials)")
+                failures += 1
+                continue
+
+            try:
+                sender.send(user, payload)
+            except PlatformError as exc:
+                print(f"  {RED}✗{RESET} {name}: {exc}")
+                failures += 1
+            else:
+                print(f"  {GREEN}✓{RESET} {name}: accepted for delivery")
+
+    if failures:
+        print(f"\n{RED}{failures} channel(s) failed{RESET}")
+        return 1
+    print(f"\n{GREEN}sent{RESET} — check your inbox, and your spam folder if it is not there")
+    return 0
+
+
 def cmd_status(args: argparse.Namespace) -> int:
     from app.repositories.scrape_run import ScrapeRunRepository
 
@@ -630,6 +702,12 @@ def main(argv: list[str] | None = None) -> int:
     sync = sub.add_parser("sync", help="apply config files without scanning")
     sync.add_argument("--config", default="config")
     sync.set_defaults(func=cmd_sync)
+
+    test_email = sub.add_parser(
+        "test-email", help="send one sample alert to check delivery works"
+    )
+    test_email.add_argument("--config", default="config")
+    test_email.set_defaults(func=cmd_test_email)
 
     reset = sub.add_parser("reset", help="clear scanned data and start over")
     reset.add_argument("--all", action="store_true", help="also drop learned selectors")

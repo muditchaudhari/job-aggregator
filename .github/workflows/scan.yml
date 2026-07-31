@@ -13,6 +13,11 @@ on:
   schedule:
     - cron: "*/30 * * * *"
   workflow_dispatch: # so you can also trigger a scan by hand from the Actions tab
+    inputs:
+      test_email:
+        description: "Send a test alert instead of scanning (checks delivery works)"
+        type: boolean
+        default: false
 
 # A slow scan must never overlap with the next scheduled one: two processes
 # writing the same SQLite database would fight for the write lock, and both
@@ -95,7 +100,16 @@ jobs:
           # every API-backed portal is unaffected.
           python -m playwright install chromium || echo "::warning::Playwright install failed; render tier unavailable"
 
+      # Delivery is the one link a scan cannot prove on demand: it only fires
+      # when a new posting clears the threshold, which can be days away.
+      - name: Send test email
+        if: inputs.test_email
+        run: |
+          mkdir -p state
+          python -m app.cli test-email
+
       - name: Scan and notify
+        if: ${{ !inputs.test_email }}
         run: |
           mkdir -p state
           # Serial, deliberately. Parallelism exists for the interactive case,
@@ -106,13 +120,13 @@ jobs:
           python -m app.cli run --notify --jobs 1 --top 25
 
       - name: Build report
-        if: always()
+        if: ${{ always() && !inputs.test_email }}
         run: python -m app.cli results --html state/results.html || true
 
       # A browsable copy of the same results the email contains, in case you
       # want to look before the mail arrives.
       - name: Upload report
-        if: always()
+        if: ${{ always() && !inputs.test_email }}
         uses: actions/upload-artifact@v4
         with:
           name: results
@@ -120,8 +134,10 @@ jobs:
           retention-days: 3
           if-no-files-found: ignore
 
+      # Skipped on a test-email run: that run does not scan, so saving would
+      # replace a good cache entry with one that has seen nothing.
       - name: Save scan state
-        if: always()
+        if: ${{ always() && !inputs.test_email }}
         uses: actions/cache/save@v4
         with:
           path: state
