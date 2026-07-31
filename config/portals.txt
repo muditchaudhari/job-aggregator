@@ -27,6 +27,7 @@ https://www.salesforce.com/company/careers/jobs/?country=India&region=Karn%C4%81
 # in — a render might get through, but that has not been tested.
 # https://careers.servicenow.com/jobs/?search=&country=India&region=Karnataka&location=Bangalore&pagesize=20 | ServiceNow
 
-# A hand-built careers page with no recognisable ATS. Uncomment after running
-# `make demo-page` in another terminal to watch the self-learning path.
-http://localhost:8080/careers.html | Northwind Labs
+# A hand-built careers page with no recognisable ATS, for watching the
+# self-learning path work. Local only — it points at your own machine, so it
+# fails on a hosted run. Uncomment after `make demo-page` in another terminal.
+# http://localhost:8080/careers.html | Northwind Labs

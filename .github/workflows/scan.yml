@@ -98,7 +98,12 @@ jobs:
       - name: Scan and notify
         run: |
           mkdir -p state
-          python -m app.cli run --notify --jobs 4 --top 25
+          # Serial, deliberately. Parallelism exists for the interactive case,
+          # where someone is watching a progress bar; here nobody is, and
+          # SQLite has a single write lock for the whole file. Four threads
+          # contend for it and the slow boards lose. A serial pass costs a few
+          # extra minutes of a runner that is free and idle either way.
+          python -m app.cli run --notify --jobs 1 --top 25
 
       - name: Build report
         if: always()

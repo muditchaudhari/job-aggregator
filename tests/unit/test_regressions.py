@@ -482,3 +482,78 @@ class TestTrailingSlashIsPreserved:
         assert canonicalize_url("https://x.com/jobs/?utm_source=li&id=7") == (
             "https://x.com/jobs/?id=7"
         )
+
+
+class TestRedislessFallbacks:
+    """A cron runner has no Redis, and both Redis-backed helpers failed badly.
+
+    The rate limiter failed *open*, letting every request through unthrottled
+    from a datacentre address — the environment where boards are least
+    forgiving. The budget tracker failed *closed*, reporting the breaker open
+    and disabling the LLM tier permanently rather than for an outage.
+    """
+
+    @staticmethod
+    def _offline_limiter(rpm: int):
+        import redis
+
+        from app.scrapers.rate_limit import RateLimiter
+
+        class Unreachable:
+            def register_script(self, _src):
+                def _raise(*_a, **_k):
+                    raise redis.ConnectionError("Connection refused")
+
+                return _raise
+
+        return RateLimiter(client=Unreachable(), requests_per_minute=rpm)  # type: ignore[arg-type]
+
+    def test_limiter_still_throttles_without_redis(self) -> None:
+        limiter = self._offline_limiter(rpm=2)
+
+        assert limiter.try_acquire("example.com")[0] is True
+        assert limiter.try_acquire("example.com")[0] is True
+        allowed, wait = limiter.try_acquire("example.com")
+        assert allowed is False
+        assert wait > 0
+
+    def test_limiter_buckets_are_per_domain(self) -> None:
+        limiter = self._offline_limiter(rpm=1)
+
+        assert limiter.try_acquire("a.com")[0] is True
+        assert limiter.try_acquire("a.com")[0] is False
+        # A different board must not inherit the first one's exhausted bucket.
+        assert limiter.try_acquire("b.com")[0] is True
+
+    def test_budget_does_not_report_the_breaker_open_without_redis(self) -> None:
+        import redis
+
+        from app.llm.budget import BudgetTracker
+
+        class Unreachable:
+            def get(self, *_a, **_k):
+                raise redis.ConnectionError("Connection refused")
+
+        tracker = BudgetTracker(client=Unreachable())  # type: ignore[arg-type]
+        status = tracker.status()
+
+        assert status.breaker_open is False
+        assert status.exhausted is False
+
+    def test_budget_still_counts_spend_in_process(self) -> None:
+        import redis
+
+        from app.llm.budget import BudgetTracker
+
+        class Unreachable:
+            def get(self, *_a, **_k):
+                raise redis.ConnectionError("Connection refused")
+
+            def pipeline(self):
+                raise redis.ConnectionError("Connection refused")
+
+        tracker = BudgetTracker(client=Unreachable())  # type: ignore[arg-type]
+        tracker.record(0.25)
+        tracker.record(0.25)
+
+        assert tracker.status().spent_usd == 0.5

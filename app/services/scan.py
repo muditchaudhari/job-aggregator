@@ -125,6 +125,13 @@ class ScanService:
 
         started = utcnow()
         run = self.runs.open_run(company.id)
+        # Committed immediately, not left pending until the scan ends. On
+        # Postgres this is merely tidy — the run becomes visible as RUNNING
+        # while it runs. On SQLite it is load-bearing: there is one write lock
+        # for the whole database, and an uncommitted INSERT holds it. Leaving
+        # it open would mean the slowest board's fetch and enrichment blocked
+        # every other company's writes for its full duration.
+        self.session.commit()
         report = ScanReport(
             company_id=company.id,
             company_name=company.name,

@@ -34,7 +34,7 @@ def get_engine() -> Engine:
             # to pre-ping against. What it does have is a single writer lock,
             # so a parallel scan needs a busy timeout or the second thread to
             # reach a write fails outright with "database is locked".
-            kwargs["connect_args"] = {"timeout": 30, "check_same_thread": False}
+            kwargs["connect_args"] = {"timeout": 60, "check_same_thread": False}
         else:
             kwargs["pool_size"] = settings.database_pool_size
             kwargs["max_overflow"] = settings.database_max_overflow

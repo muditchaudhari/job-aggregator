@@ -8,6 +8,7 @@ career site by eight.
 
 from __future__ import annotations
 
+import threading
 import time
 
 import redis
@@ -74,6 +75,11 @@ class RateLimiter:
         )
         self._rpm = requests_per_minute or settings.scrape_requests_per_minute_per_domain
         self._script = self._client.register_script(_TOKEN_BUCKET_LUA)
+        # Fallback bucket, used only when Redis is unreachable. Guarded by a
+        # lock because a scan runs several companies on separate threads.
+        self._local: dict[str, tuple[float, float]] = {}
+        self._local_lock = threading.Lock()
+        self._warned_offline = False
 
     def _key(self, domain: str) -> str:
         return f"ratelimit:domain:{domain}"
@@ -81,10 +87,13 @@ class RateLimiter:
     def try_acquire(self, domain: str) -> tuple[bool, float]:
         """Take one token. Returns ``(allowed, seconds_until_available)``.
 
-        A Redis outage returns "allowed" rather than blocking every scrape: the
-        limiter is a courtesy mechanism, and failing closed would turn a cache
-        problem into a total outage of the product. The retry/backoff logic in
-        the fetcher remains as a second line of defence.
+        Without Redis the same bucket is kept in this process instead of being
+        abandoned. Letting every request through would be the wrong failure
+        mode where it matters most: a single-process cron runner has no Redis
+        by design, and it scrapes from a datacentre address that boards already
+        treat with more suspicion than a home one. A per-process bucket is
+        exactly right there, and only under-counts when several workers share a
+        domain — which is the case that has Redis anyway.
         """
         capacity = max(1, self._rpm)
         rate = self._rpm / 60.0
@@ -95,8 +104,28 @@ class RateLimiter:
             )
             return bool(int(allowed)), float(wait)
         except redis.RedisError as exc:
-            logger.warning("rate_limiter.unavailable", domain=domain, error=str(exc))
-            return True, 0.0
+            if not self._warned_offline:
+                self._warned_offline = True
+                logger.warning(
+                    "rate_limiter.unavailable",
+                    error=str(exc),
+                    fallback="per-process token bucket",
+                )
+            return self._try_acquire_local(domain, rate=rate, capacity=capacity)
+
+    def _try_acquire_local(
+        self, domain: str, *, rate: float, capacity: float
+    ) -> tuple[bool, float]:
+        """In-process mirror of the Lua bucket."""
+        now = time.monotonic()
+        with self._local_lock:
+            tokens, updated = self._local.get(domain, (capacity, now))
+            tokens = min(capacity, tokens + (now - updated) * rate)
+            if tokens >= 1.0:
+                self._local[domain] = (tokens - 1.0, now)
+                return True, 0.0
+            self._local[domain] = (tokens, now)
+            return False, (1.0 - tokens) / rate
 
     def acquire(self, domain: str, *, max_wait_seconds: float = 30.0) -> bool:
         """Block until a token is available, or give up.
