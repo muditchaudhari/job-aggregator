@@ -19,7 +19,10 @@ https://careers.adobe.com/us/en/search-results | Adobe
 https://job-boards.greenhouse.io/razorpaysoftwareprivatelimited | Razorpay
 https://job-boards.eu.greenhouse.io/groww?offices%5B%5D=4018977101&offices%5B%5D=4018978101 | Groww
 https://visa.wd5.myworkdayjobs.com/Visa?locationCountry=c4f78be1a8f14da0ab49ce1162348a5e | Visa
-https://www.phonepe.com/careers/job-openings/ | PhonePe
+# PhonePe's own careers pages (phonepe.com/careers/, .../job-openings/) are a
+# marketing shell: the listings load client-side from SmartRecruiters, and a
+# plain fetch sees only the site's navigation. Point straight at the board.
+https://jobs.smartrecruiters.com/PHONEPELIMITED | PhonePe
 https://jobs.uber.com/en/jobs/?location=Bengaluru&radius=100 | Uber
 https://www.salesforce.com/company/careers/jobs/?country=India&region=Karn%C4%81taka&location=Bangalore&page=1 | Salesforce
 # ServiceNow answers non-browser clients with HTTP 403 (bot protection), so it
