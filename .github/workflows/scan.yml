@@ -1,17 +1,19 @@
 name: Scan job portals
 
-# Every 30 minutes. Two things worth knowing about GitHub's cron:
+# Every 30 minutes — at :13 and :43, not :00 and :30. Two things worth knowing
+# about GitHub's cron:
 #
-#  * It is best-effort. Runs are queued on shared infrastructure and can be
-#    delayed by several minutes at busy times (the top of the hour is the
-#    worst). Nothing here depends on exact timing, so that is fine.
+#  * It is best-effort, and it drops runs under load rather than delaying
+#    them. On the hour and half-hour are the most congested slots on the
+#    shared queue, and a `*/30` schedule sat there produced about six runs a
+#    day instead of forty-eight. Off-peak minutes are honoured far more often.
 #  * A scheduled workflow is DISABLED automatically after 60 days without
 #    repository activity. The "heartbeat" step at the end pushes a one-line
 #    commit once a day, which counts as activity and keeps the schedule alive
 #    without your having to remember anything.
 on:
   schedule:
-    - cron: "*/30 * * * *"
+    - cron: "13,43 * * * *"
   workflow_dispatch: # so you can also trigger a scan by hand from the Actions tab
     inputs:
       test_email:
