@@ -380,6 +380,21 @@ def cmd_test_email(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_dashboard(args: argparse.Namespace) -> int:
+    """Write the portal-health page (and its JSON) to a directory."""
+    from app.dashboard import build_summary, write_site
+
+    threshold = load(Path(args.config)).match_threshold
+    with session_scope() as session:
+        summary = build_summary(session, match_threshold=threshold)
+    out = Path(args.out)
+    write_site(summary, out)
+    t = summary["totals"]
+    print(f"{t['working']}/{t['portals']} portals working · "
+          f"{t['jobs_stored']} jobs · {t['matches']} matches → {out / 'index.html'}")
+    return 0
+
+
 def cmd_status(args: argparse.Namespace) -> int:
     from app.repositories.scrape_run import ScrapeRunRepository
 
@@ -702,6 +717,11 @@ def main(argv: list[str] | None = None) -> int:
     sync = sub.add_parser("sync", help="apply config files without scanning")
     sync.add_argument("--config", default="config")
     sync.set_defaults(func=cmd_sync)
+
+    dash = sub.add_parser("dashboard", help="write the portal-health page")
+    dash.add_argument("--config", default="config")
+    dash.add_argument("--out", default="site", help="output directory")
+    dash.set_defaults(func=cmd_dashboard)
 
     test_email = sub.add_parser(
         "test-email", help="send one sample alert to check delivery works"

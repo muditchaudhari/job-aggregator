@@ -30,11 +30,18 @@ concurrency:
 
 permissions:
   contents: write # only for the heartbeat commit
+  pages: write    # the health dashboard
+  id-token: write # deploy-pages authenticates with an OIDC token, not a PAT
 
 jobs:
   scan:
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    # Where the dashboard deploys to. GitHub only accepts a Pages deployment
+    # from a job bound to this environment.
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
 
     env:
       # No Postgres and no Redis on a runner. SQLite holds the state and the
@@ -135,6 +142,27 @@ jobs:
           path: state/results.html
           retention-days: 3
           if-no-files-found: ignore
+
+      # A static page that answers "is everything still working" without a
+      # trip through the Actions log. Rebuilt from the database after every
+      # scan and published to GitHub Pages, so refreshing the page shows the
+      # latest run. No commits: it deploys straight from this job.
+      - name: Build dashboard
+        if: ${{ always() && !inputs.test_email }}
+        run: |
+          python -m app.cli dashboard --out site
+          cp state/results.html site/results.html 2>/dev/null || true
+
+      - name: Upload dashboard
+        if: ${{ always() && !inputs.test_email }}
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy dashboard
+        if: ${{ always() && !inputs.test_email }}
+        id: deployment
+        uses: actions/deploy-pages@v4
 
       # Skipped on a test-email run: that run does not scan, so saving would
       # replace a good cache entry with one that has seen nothing.
