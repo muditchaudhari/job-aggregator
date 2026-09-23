@@ -380,6 +380,42 @@ def cmd_test_email(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_forget(args: argparse.Namespace) -> int:
+    """Drop specific postings so the next scan rediscovers them as new.
+
+    For replaying a delivery after fixing a bug in what was delivered. A
+    posting is identified by its requisition id, which is what the board
+    itself calls it, so this cannot quietly match more than intended the way
+    a title substring would.
+    """
+    from app.models.job import Job
+    from app.models.match import JobMatch
+
+    with session_scope() as session:
+        query = session.query(Job).filter(Job.external_job_id.in_(args.ids))
+        if args.company:
+            query = query.join(Company, Company.id == Job.company_id).filter(
+                Company.name.ilike(f"%{args.company}%")
+            )
+        targets = query.all()
+        if not targets:
+            print(f"{YELLOW}nothing matched{RESET}: {', '.join(args.ids)}")
+            return 0
+
+        for job in targets:
+            print(f"  forgetting {job.external_job_id}  {job.title[:58]}")
+        job_ids = [job.id for job in targets]
+        # Matches first: they carry a foreign key to the job, and leaving
+        # them would also leave the posting on the dashboard's match count.
+        session.query(JobMatch).filter(JobMatch.job_id.in_(job_ids)).delete(
+            synchronize_session=False
+        )
+        session.query(Job).filter(Job.id.in_(job_ids)).delete(synchronize_session=False)
+
+    print(f"\n{GREEN}forgot {len(targets)}{RESET} — the next scan will treat them as new")
+    return 0
+
+
 def cmd_dashboard(args: argparse.Namespace) -> int:
     """Write the portal-health page (and its JSON) to a directory."""
     from app.dashboard import build_summary, write_site
@@ -717,6 +753,13 @@ def main(argv: list[str] | None = None) -> int:
     sync = sub.add_parser("sync", help="apply config files without scanning")
     sync.add_argument("--config", default="config")
     sync.set_defaults(func=cmd_sync)
+
+    forget = sub.add_parser(
+        "forget", help="drop postings by requisition id so they are seen as new again"
+    )
+    forget.add_argument("ids", nargs="+", metavar="ID", help="e.g. REF088484W")
+    forget.add_argument("--company", help="restrict to one portal, by name")
+    forget.set_defaults(func=cmd_forget)
 
     dash = sub.add_parser("dashboard", help="write the portal-health page")
     dash.add_argument("--config", default="config")

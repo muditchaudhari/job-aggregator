@@ -20,6 +20,10 @@ on:
         description: "Send a test alert instead of scanning (checks delivery works)"
         type: boolean
         default: false
+      forget:
+        description: "Requisition ids to forget before scanning, space separated (replays their alert)"
+        type: string
+        default: ""
 
 # A slow scan must never overlap with the next scheduled one: two processes
 # writing the same SQLite database would fight for the write lock, and both
@@ -116,6 +120,20 @@ jobs:
         run: |
           mkdir -p state
           python -m app.cli test-email
+
+      # Deliberate replay: drop these postings so the scan below rediscovers
+      # them and delivers their alert again. Used after fixing something that
+      # was wrong in what was already sent.
+      - name: Forget postings
+        if: ${{ !inputs.test_email && inputs.forget != '' }}
+        # Through the environment, never interpolated into the script body:
+        # `${{ inputs.x }}` is substituted before bash sees the line, so the
+        # input would be executable text rather than an argument.
+        env:
+          FORGET_IDS: ${{ inputs.forget }}
+        run: |
+          mkdir -p state
+          python -m app.cli forget $FORGET_IDS
 
       - name: Scan and notify
         if: ${{ !inputs.test_email }}
