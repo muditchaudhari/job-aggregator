@@ -557,3 +557,82 @@ class TestRedislessFallbacks:
         tracker.record(0.25)
 
         assert tracker.status().spent_usd == 0.5
+
+
+class TestWorkdayJobUrlKeepsTheSiteSegment:
+    """Every Visa link we sent for weeks was a 404.
+
+    ``externalPath`` is an absolute path ("/job/IN---Bengaluru-India/X_REF1"),
+    and ``urljoin`` replaces the base's whole path with it — dropping the site
+    segment the tenant requires. The result was a well-formed URL that 404s,
+    which is worse than no URL: it reaches the person before anything notices.
+    """
+
+    @staticmethod
+    def _jobs(career_url: str, entries: list[dict]) -> list:
+        from app.models.company import Company
+        from app.models.enums import ATSType, ScrapingStrategy
+        from app.scrapers.adapters.workday import WorkdayScraper
+        from app.scrapers.fetcher import FetchResult
+
+        company = Company(
+            name="Visa",
+            career_url=career_url,
+            website="visa.com",
+            ats_type=ATSType.WORKDAY,
+        )
+        result = FetchResult(
+            url=career_url,
+            final_url=career_url,
+            status_code=200,
+            text="",
+            content_type="application/json",
+            strategy=ScrapingStrategy.API,
+            fetch_ms=1,
+            json_body={"jobPostings": entries},
+        )
+        return WorkdayScraper(company, None).extract_jobs(result)
+
+    def test_site_segment_survives(self) -> None:
+        jobs = self._jobs(
+            "https://visa.wd5.myworkdayjobs.com/Visa?locationCountry=c4f78",
+            [{
+                "title": "Sr. SW Engineer",
+                "externalPath": "/job/IN---Bengaluru-India/Sr-SW-Engineer_REF087773W",
+                "bulletFields": ["REF087773W"],
+            }],
+        )
+
+        assert jobs[0].url == (
+            "https://visa.wd5.myworkdayjobs.com/Visa"
+            "/job/IN---Bengaluru-India/Sr-SW-Engineer_REF087773W"
+        )
+
+    def test_locale_prefixed_career_url_resolves_to_the_same_site(self) -> None:
+        jobs = self._jobs(
+            "https://visa.wd5.myworkdayjobs.com/en-US/Visa",
+            [{"title": "X", "externalPath": "/job/A/X_REF1", "bulletFields": ["REF1"]}],
+        )
+
+        assert jobs[0].url == "https://visa.wd5.myworkdayjobs.com/Visa/job/A/X_REF1"
+
+    def test_remote_type_is_read_from_the_listing(self) -> None:
+        jobs = self._jobs(
+            "https://visa.wd5.myworkdayjobs.com/Visa",
+            [{
+                "title": "X",
+                "externalPath": "/job/A/X_REF1",
+                "bulletFields": ["REF1"],
+                "remoteType": "Hybrid",
+            }],
+        )
+
+        assert jobs[0].remote == "Hybrid"
+
+    def test_a_posting_without_a_path_has_no_url_rather_than_a_wrong_one(self) -> None:
+        jobs = self._jobs(
+            "https://visa.wd5.myworkdayjobs.com/Visa",
+            [{"title": "X", "bulletFields": ["REF1"]}],
+        )
+
+        assert jobs[0].url is None

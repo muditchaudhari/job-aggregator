@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import re
 from typing import Any, ClassVar
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urlparse
 
 from app.core.errors import PermanentFetchError
 from app.core.logging import get_logger
@@ -136,7 +136,14 @@ class WorkdayScraper(BaseScraper):
     def extract_jobs(self, result: FetchResult) -> list[RawJob]:
         payload: Any = result.json_body or {}
         entries = payload.get("jobPostings", []) if isinstance(payload, dict) else []
-        base = self.company.career_url
+        # NOT urljoin(career_url, externalPath). ``externalPath`` is an
+        # absolute path ("/job/IN---Bengaluru-India/Sr-SW-Engineer_REF1"), and
+        # urljoin replaces the whole path of the base with it — silently
+        # dropping the site segment that the tenant needs. The result is a
+        # well-formed URL that 404s, which is worse than no URL at all: it
+        # reaches the person before anything notices it is broken.
+        origin, _tenant, site = self._parts()
+        base = f"{origin}/{site}"
 
         jobs: list[RawJob] = []
         for entry in entries:
@@ -144,7 +151,7 @@ class WorkdayScraper(BaseScraper):
             jobs.append(
                 RawJob(
                     title=clean_text(entry.get("title")),
-                    url=urljoin(base, external_path) if external_path else None,
+                    url=f"{base}{external_path}" if external_path else None,
                     # ``bulletFields`` is where Workday puts the requisition
                     # number; there is no dedicated id field on the list view.
                     external_id=self._requisition_id(entry),
@@ -152,6 +159,10 @@ class WorkdayScraper(BaseScraper):
                     # e.g. "Posted 3 Days Ago" — relative, handled downstream.
                     posted_at=clean_text(entry.get("postedOn")),
                     employment_type=clean_text(entry.get("timeType")),
+                    # Present on the list view, unlike timeType. Reading it
+                    # here is the difference between "Remote: Hybrid" and
+                    # "Remote: Unknown" on every Workday posting.
+                    remote=clean_text(entry.get("remoteType")),
                     raw=entry,
                 )
             )
