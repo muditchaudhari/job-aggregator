@@ -26,7 +26,7 @@ from app.normalization.dates import humanize_age
 from app.repositories.company import CompanyRepository
 from app.repositories.scrape_run import ScrapeRunRepository
 from app.repositories.user import UserProfileRepository
-from app.utils.time import utcnow
+from app.utils.time import as_aware, utcnow
 
 #: A portal whose last run is older than this is "stale" even if that run
 #: succeeded: the scheduler has stopped reaching it, which is its own failure.
@@ -94,11 +94,12 @@ def _portal_row(
     matched: dict[Any, int],
     now: datetime,
 ) -> dict[str, Any]:
-    if last is None:
+    started = as_aware(last.started_at) if last else None
+    if last is None or started is None:
         health = "never"
     elif last.status is ScrapeStatus.FAILED:
         health = "failing"
-    elif now - last.started_at > _STALE_AFTER:
+    elif now - started > _STALE_AFTER:
         health = "stale"
     else:
         health = "ok"
@@ -108,8 +109,8 @@ def _portal_row(
         "url": company.career_url,
         "ats": str(company.ats_type),
         "health": health,
-        "last_run_at": last.started_at.isoformat() if last else None,
-        "last_run_age": humanize_age(last.started_at, now=now) if last else "never",
+        "last_run_at": started.isoformat() if started else None,
+        "last_run_age": humanize_age(started, now=now) if started else "never",
         "last_status": str(last.status) if last else None,
         "tier": str(last.extraction_tier) if last and last.extraction_tier else None,
         "jobs_found": last.jobs_found if last else 0,

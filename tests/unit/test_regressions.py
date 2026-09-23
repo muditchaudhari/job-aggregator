@@ -636,3 +636,49 @@ class TestWorkdayJobUrlKeepsTheSiteSegment:
         )
 
         assert jobs[0].url is None
+
+
+class TestDashboardOnSqlite:
+    """The dashboard crashed on the runner while passing locally.
+
+    Postgres round-trips ``timestamptz`` as an aware datetime; SQLite has no
+    timezone type and returns naive ones for the same column. Subtracting an
+    aware ``utcnow()`` from a naive stored timestamp raises — so the page
+    worked against the development database and failed on every hosted run.
+    The tests use SQLite, which is the backend that has the problem.
+    """
+
+    def test_summary_handles_naive_timestamps(self, db_session) -> None:
+        from app.dashboard import build_summary
+        from app.models.company import Company
+        from app.models.enums import ATSType, ScrapeStatus
+        from app.repositories.scrape_run import ScrapeRunRepository
+
+        company = Company(
+            name="Visa",
+            career_url="https://visa.wd5.myworkdayjobs.com/Visa",
+            website="visa.com",
+            ats_type=ATSType.WORKDAY,
+        )
+        db_session.add(company)
+        db_session.flush()
+        run = ScrapeRunRepository(db_session).open_run(company.id)
+        run.status = ScrapeStatus.SUCCESS
+        run.jobs_found = 789
+        db_session.flush()
+
+        summary = build_summary(db_session, match_threshold=0.6)
+
+        assert summary["totals"]["portals"] == 1
+        assert summary["portals"][0]["health"] == "ok"
+        assert summary["portals"][0]["jobs_found"] == 789
+
+    def test_as_aware_leaves_aware_timestamps_alone(self) -> None:
+        from datetime import UTC, datetime
+
+        from app.utils.time import as_aware
+
+        aware = datetime(2026, 9, 23, 12, 0, tzinfo=UTC)
+        assert as_aware(aware) is aware
+        assert as_aware(datetime(2026, 9, 23, 12, 0)) == aware
+        assert as_aware(None) is None
