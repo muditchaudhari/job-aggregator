@@ -682,3 +682,56 @@ class TestDashboardOnSqlite:
         assert as_aware(aware) is aware
         assert as_aware(datetime(2026, 9, 23, 12, 0)) == aware
         assert as_aware(None) is None
+
+
+class TestDashboardFollowsTheConfiguredPortals:
+    """The health page hid exactly the portals that were broken.
+
+    A portal that fails often enough is deactivated by the failure backoff,
+    and the page listed only active companies — so Uber and Salesforce
+    disappeared from it at the moment they started failing. Meanwhile a
+    portal removed from portals.txt lingered in the database and kept
+    reporting itself as failing.
+    """
+
+    @staticmethod
+    def _company(db_session, name: str, url: str, *, active: bool):
+        from app.models.company import Company
+        from app.models.enums import ATSType, ScrapeStatus
+        from app.repositories.scrape_run import ScrapeRunRepository
+
+        company = Company(
+            name=name, career_url=url, website="x.com",
+            ats_type=ATSType.GENERIC_HTML, is_active=active,
+        )
+        db_session.add(company)
+        db_session.flush()
+        run = ScrapeRunRepository(db_session).open_run(company.id)
+        run.status = ScrapeStatus.SUCCESS
+        db_session.flush()
+        return company
+
+    def test_a_deactivated_portal_still_appears(self, db_session) -> None:
+        from app.dashboard import build_summary
+
+        self._company(db_session, "Salesforce", "https://sf.example/jobs", active=False)
+
+        summary = build_summary(
+            db_session, match_threshold=0.6, portal_urls=["https://sf.example/jobs"]
+        )
+
+        assert [p["name"] for p in summary["portals"]] == ["Salesforce"]
+        assert summary["portals"][0]["health"] == "paused"
+        assert summary["totals"]["failing"] == 1
+
+    def test_a_portal_removed_from_the_file_drops_off(self, db_session) -> None:
+        from app.dashboard import build_summary
+
+        self._company(db_session, "Northwind", "http://localhost:8080/c.html", active=True)
+        self._company(db_session, "Groww", "https://groww.example/jobs", active=True)
+
+        summary = build_summary(
+            db_session, match_threshold=0.6, portal_urls=["https://groww.example/jobs"]
+        )
+
+        assert [p["name"] for p in summary["portals"]] == ["Groww"]

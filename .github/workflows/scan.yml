@@ -146,9 +146,14 @@ jobs:
           # extra minutes of a runner that is free and idle either way.
           python -m app.cli run --notify --jobs 1 --top 25
 
+      # Written straight into the published directory. Copying it there
+      # afterwards meant a silent `cp` failure left the dashboard's link to it
+      # pointing at nothing.
       - name: Build report
         if: ${{ always() && !inputs.test_email }}
-        run: python -m app.cli results --html state/results.html || true
+        run: |
+          mkdir -p site
+          python -m app.cli results --html site/results.html || true
 
       # A browsable copy of the same results the email contains, in case you
       # want to look before the mail arrives.
@@ -157,7 +162,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: results
-          path: state/results.html
+          path: site/results.html
           retention-days: 3
           if-no-files-found: ignore
 
@@ -167,9 +172,7 @@ jobs:
       # latest run. No commits: it deploys straight from this job.
       - name: Build dashboard
         if: ${{ always() && !inputs.test_email }}
-        run: |
-          python -m app.cli dashboard --out site
-          cp state/results.html site/results.html 2>/dev/null || true
+        run: python -m app.cli dashboard --out site
 
       - name: Upload dashboard
         if: ${{ always() && !inputs.test_email }}

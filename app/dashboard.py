@@ -9,6 +9,7 @@ and nothing here that is not already in the public run logs.
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from datetime import datetime, timedelta
 from html import escape
 from pathlib import Path
@@ -27,20 +28,36 @@ from app.repositories.company import CompanyRepository
 from app.repositories.scrape_run import ScrapeRunRepository
 from app.repositories.user import UserProfileRepository
 from app.utils.time import as_aware, utcnow
+from app.utils.urls import canonicalize_url
 
 #: A portal whose last run is older than this is "stale" even if that run
 #: succeeded: the scheduler has stopped reaching it, which is its own failure.
 _STALE_AFTER = timedelta(hours=3)
 
 
-def build_summary(session: Session, *, match_threshold: float) -> dict[str, Any]:
+def build_summary(
+    session: Session,
+    *,
+    match_threshold: float,
+    portal_urls: Sequence[str] | None = None,
+) -> dict[str, Any]:
     """Everything the page shows, as plain data.
 
     Kept separate from rendering so the same dict can be written as JSON —
     a future dashboard elsewhere reads that rather than scraping the HTML.
+
+    ``portal_urls`` is what ``config/portals.txt`` currently asks for, and the
+    page follows it rather than the database's ``is_active`` flag. Two reasons,
+    both learned the hard way: a portal that fails often enough is deactivated
+    automatically, which made the health page hide precisely the portals that
+    were broken; and a portal removed from the file lingered in the database,
+    so a careers page we no longer scan still reported itself as failing.
     """
     now = utcnow()
-    companies = CompanyRepository(session).list_filtered(is_active=True, limit=500)
+    companies = list(CompanyRepository(session).list_filtered(limit=500))
+    if portal_urls is not None:
+        wanted = {canonicalize_url(url) for url in portal_urls}
+        companies = [c for c in companies if canonicalize_url(c.career_url) in wanted]
     runs = ScrapeRunRepository(session)
     profiles = UserProfileRepository(session).list_all()
     profile_id = profiles[0].id if profiles else None
@@ -70,7 +87,8 @@ def build_summary(session: Session, *, match_threshold: float) -> dict[str, Any]
     portals = [
         _portal_row(c, runs.latest_for_company(c.id), stored, matched, now) for c in companies
     ]
-    portals.sort(key=lambda p: (p["health"] != "failing", p["health"] != "stale", p["name"]))
+    order = {"failing": 0, "paused": 1, "stale": 2, "never": 3, "ok": 4}
+    portals.sort(key=lambda p: (order.get(p["health"], 9), p["name"]))
 
     return {
         "generated_at": now.isoformat(),
@@ -78,7 +96,7 @@ def build_summary(session: Session, *, match_threshold: float) -> dict[str, Any]
         "totals": {
             "portals": len(portals),
             "working": sum(1 for p in portals if p["health"] == "ok"),
-            "failing": sum(1 for p in portals if p["health"] == "failing"),
+            "failing": sum(1 for p in portals if p["health"] in ("failing", "paused")),
             "stale": sum(1 for p in portals if p["health"] == "stale"),
             "jobs_stored": sum(stored.values()),
             "matches": sum(matched.values()),
@@ -95,7 +113,12 @@ def _portal_row(
     now: datetime,
 ) -> dict[str, Any]:
     started = as_aware(last.started_at) if last else None
-    if last is None or started is None:
+    if not company.is_active:
+        # Deactivated by the failure backoff. Worth its own state: the portal
+        # is still in portals.txt, so silence from it is not the same as
+        # "working" and not the same as "you removed it".
+        health = "paused"
+    elif last is None or started is None:
         health = "never"
     elif last.status is ScrapeStatus.FAILED:
         health = "failing"
@@ -140,6 +163,7 @@ _HEALTH_LABEL = {
     "stale": "stale",
     "failing": "failing",
     "never": "not yet run",
+    "paused": "paused",
 }
 
 
@@ -220,7 +244,8 @@ _PAGE = """<!doctype html>
  .dot{{display:inline-block;width:.6rem;height:.6rem;border-radius:50%;margin-right:.45rem;
    background:var(--mute);vertical-align:middle}}
  tr.ok .dot{{background:var(--ok)}} tr.stale .dot{{background:var(--warn)}}
- tr.failing .dot{{background:var(--bad)}}
+ tr.failing .dot,tr.paused .dot{{background:var(--bad)}}
+ tr.paused td:first-child{{color:var(--bad);font-weight:600}}
  tr.failing td:first-child{{color:var(--bad);font-weight:600}}
  tr.stale td:first-child{{color:var(--warn)}}
  .meta{{color:var(--mute);font-size:.78rem;margin-top:.15rem}}

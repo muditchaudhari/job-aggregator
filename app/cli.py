@@ -420,9 +420,13 @@ def cmd_dashboard(args: argparse.Namespace) -> int:
     """Write the portal-health page (and its JSON) to a directory."""
     from app.dashboard import build_summary, write_site
 
-    threshold = load(Path(args.config)).match_threshold
+    config = load(Path(args.config))
     with session_scope() as session:
-        summary = build_summary(session, match_threshold=threshold)
+        summary = build_summary(
+            session,
+            match_threshold=config.match_threshold,
+            portal_urls=[p.url for p in config.portals],
+        )
     out = Path(args.out)
     write_site(summary, out)
     t = summary["totals"]
