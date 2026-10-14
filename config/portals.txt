@@ -23,6 +23,10 @@ https://visa.wd5.myworkdayjobs.com/Visa?locationCountry=c4f78be1a8f14da0ab49ce11
 # marketing shell: the listings load client-side from SmartRecruiters, and a
 # plain fetch sees only the site's navigation. Point straight at the board.
 https://jobs.smartrecruiters.com/PHONEPELIMITED | PhonePe
+# careers.adyen.com is a Nuxt front-end over Greenhouse: the vacancy list is
+# fetched client-side from boards-api.greenhouse.io, so the careers page itself
+# contains no postings at any tier. Point at the board instead.
+https://job-boards.greenhouse.io/adyen | Adyen
 https://jobs.uber.com/en/jobs/?location=Bengaluru&radius=100 | Uber
 https://www.salesforce.com/company/careers/jobs/?country=India&region=Karn%C4%81taka&location=Bangalore&page=1 | Salesforce
 # ServiceNow answers non-browser clients with HTTP 403 (bot protection), so it
