@@ -735,3 +735,72 @@ class TestDashboardFollowsTheConfiguredPortals:
         )
 
         assert [p["name"] for p in summary["portals"]] == ["Groww"]
+
+
+class TestSmartRecruitersLinksToAPageNotTheApi:
+    """PhonePe alerts linked to the API record instead of the job page.
+
+    Every posting carries a ``ref`` field that looks like the link you want.
+    It is the API's self-link: it answers 200 with JSON, so the URL was
+    well-formed, reachable, and showed the recipient raw JSON. A status check
+    could never have caught it — only the content type can.
+
+    The cause underneath was quieter: the company token was read from a
+    top-level ``company`` key that the postings response does not have, so it
+    resolved to None and sent every link down the ``ref`` branch.
+    """
+
+    @staticmethod
+    def _jobs(entries: list[dict]) -> list:
+        from app.models.company import Company
+        from app.models.enums import ATSType, ScrapingStrategy
+        from app.scrapers.adapters.smartrecruiters import SmartRecruitersScraper
+        from app.scrapers.fetcher import FetchResult
+
+        company = Company(
+            name="PhonePe",
+            career_url="https://jobs.smartrecruiters.com/PHONEPELIMITED",
+            website="phonepe.com",
+            ats_type=ATSType.SMARTRECRUITERS,
+        )
+        result = FetchResult(
+            url="x", final_url="x", status_code=200, text="",
+            content_type="application/json",
+            strategy=ScrapingStrategy.API, fetch_ms=1,
+            json_body={"content": entries},
+        )
+        return SmartRecruitersScraper(company, None).extract_jobs(result)
+
+    def test_the_api_self_link_is_never_used(self) -> None:
+        jobs = self._jobs([{
+            "id": "1000000000004647",
+            "name": "Software Engineer (3-5 years), Symphony",
+            "ref": (
+                "https://api.smartrecruiters.com/v1/companies"
+                "/PHONEPELIMITED/postings/1000000000004647"
+            ),
+        }])
+
+        assert "api.smartrecruiters.com" not in jobs[0].url
+        assert jobs[0].url == (
+            "https://jobs.smartrecruiters.com/PHONEPELIMITED/1000000000004647"
+        )
+
+    def test_an_explicit_posting_url_wins(self) -> None:
+        jobs = self._jobs([{
+            "id": "1",
+            "name": "X",
+            "postingUrl": "https://careers.phonepe.com/jobs/1",
+            "ref": "https://api.smartrecruiters.com/v1/companies/X/postings/1",
+        }])
+
+        assert jobs[0].url == "https://careers.phonepe.com/jobs/1"
+
+    def test_a_posting_published_under_another_identifier_uses_it(self) -> None:
+        jobs = self._jobs([{
+            "id": "7",
+            "name": "X",
+            "company": {"identifier": "OTHERCO"},
+        }])
+
+        assert jobs[0].url == "https://jobs.smartrecruiters.com/OTHERCO/7"

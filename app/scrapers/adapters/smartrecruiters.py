@@ -94,7 +94,10 @@ class SmartRecruitersScraper(BaseScraper):
     def extract_jobs(self, result: FetchResult) -> list[RawJob]:
         payload: Any = result.json_body or {}
         entries = payload.get("content", []) if isinstance(payload, dict) else []
-        token = payload.get("company") if isinstance(payload, dict) else None
+        # From the career URL, not the payload: the postings response has no
+        # top-level "company" key, so this silently resolved to None and sent
+        # every link down the fallback path below.
+        token = self._token()
 
         jobs: list[RawJob] = []
         for entry in entries:
@@ -125,13 +128,21 @@ class SmartRecruitersScraper(BaseScraper):
 
     @staticmethod
     def _posting_url(entry: dict[str, Any], token: str | None) -> str | None:
-        """Prefer the API's own link; fall back to the canonical board URL."""
-        ref = entry.get("ref")
-        if isinstance(ref, str) and ref.startswith("http"):
-            return ref
+        """The page a person can read, not the record we read.
+
+        Deliberately ignores ``ref``, which every posting carries and which
+        looks like exactly what we want. It is the API's self-link: it answers
+        200 with JSON, so a link built from it is well-formed, passes every
+        check, and shows the recipient a wall of JSON instead of the job.
+        """
         posting_url = entry.get("postingUrl")
         if isinstance(posting_url, str) and posting_url.startswith("http"):
             return posting_url
+        # Each posting also names its own company, which matters for a board
+        # whose postings are published under a different identifier.
+        company = entry.get("company")
+        if isinstance(company, dict) and company.get("identifier"):
+            token = str(company["identifier"])
         if token and entry.get("id"):
             return f"https://jobs.smartrecruiters.com/{token}/{entry['id']}"
         return None
