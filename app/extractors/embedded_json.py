@@ -211,28 +211,59 @@ def _harvest(payload: Any, base_url: str, *, depth: int = 0) -> list[RawJob]:
     payloads routinely contain both a three-item "featured jobs" array and the
     full board, and the first one encountered is usually the short one.
     """
-    if depth > 8:
-        return []
+    return _harvest_ranked(payload, base_url, depth=depth)[1]
 
-    best: list[RawJob] = []
+
+def _is_internal_key(key: str) -> bool:
+    """An employees-only board, which an outside applicant cannot use.
+
+    Sites that publish both put the internal list in the same payload and it
+    is often the larger of the two — 373 internal postings against 74 public
+    ones on one board — so size alone picks the wrong list.
+    """
+    return "internal" in key.lower()
+
+
+def _looks_like_job_key(key: str) -> bool:
+    lowered = key.lower()
+    return key in _LIST_KEYS or any(
+        word in lowered for word in ("job", "position", "opening", "vacanc", "posting")
+    )
+
+
+def _harvest_ranked(
+    payload: Any, base_url: str, *, depth: int = 0
+) -> tuple[int, list[RawJob]]:
+    """Return ``(rank, jobs)``, where rank 1 means the list was found under a
+    key that names it as postings and 0 means it was an anonymous list.
+
+    Rank is compared before length. A list sitting under "regularJobs" is
+    stronger evidence than a longer list with no name, and ranking by size
+    alone picked a framework's unrelated arrays over the real board.
+    """
+    if depth > 8:
+        return (0, [])
+
+    best: tuple[int, list[RawJob]] = (0, [])
+
+    def consider(rank: int, jobs: list[RawJob]) -> None:
+        nonlocal best
+        if (rank, len(jobs)) > (best[0], len(best[1])):
+            best = (rank, jobs)
 
     if isinstance(payload, dict):
         for key, value in payload.items():
-            if key in _LIST_KEYS and isinstance(value, list):
-                candidate = _jobs_from_list(value, base_url)
-                if len(candidate) > len(best):
-                    best = candidate
-            nested = _harvest(value, base_url, depth=depth + 1)
-            if len(nested) > len(best):
-                best = nested
+            if _is_internal_key(key):
+                continue
+            if isinstance(value, list) and _looks_like_job_key(key):
+                consider(1, _jobs_from_list(value, base_url))
+            nested_rank, nested = _harvest_ranked(value, base_url, depth=depth + 1)
+            consider(nested_rank, nested)
     elif isinstance(payload, list):
-        candidate = _jobs_from_list(payload, base_url)
-        if len(candidate) > len(best):
-            best = candidate
+        consider(0, _jobs_from_list(payload, base_url))
         for item in payload[:50]:
-            nested = _harvest(item, base_url, depth=depth + 1)
-            if len(nested) > len(best):
-                best = nested
+            nested_rank, nested = _harvest_ranked(item, base_url, depth=depth + 1)
+            consider(nested_rank, nested)
 
     return best
 
@@ -254,7 +285,7 @@ def _jobs_from_list(items: list[Any], base_url: str) -> list[RawJob]:
                 url=absolutize(url, base_url),
                 external_id=_as_str(_first_value(item, _ID_KEYS)),
                 location=clean_text(_flatten_location(_first_value(item, _LOCATION_KEYS))),
-                description=strip_html(_first_value(item, _DESCRIPTION_KEYS)),
+                description=strip_html(_as_text(_first_value(item, _DESCRIPTION_KEYS))),
                 posted_at=_as_str(_first_value(item, _DATE_KEYS)),
                 raw=item,
             )
@@ -265,11 +296,49 @@ def _jobs_from_list(items: list[Any], base_url: str) -> list[RawJob]:
     return jobs if len(jobs) >= max(1, len(dicts) // 2) else []
 
 
+def _as_text(value: Any) -> str | None:
+    """Reduce a description field to a string.
+
+    A description is not always one: boards wrap it in an object keyed by
+    audience (``{"websiteDescription": ...}``) or split it into a list of
+    sections. Reaching into envelopes surfaced those shapes, and handing a
+    dict to the HTML stripper raised.
+    """
+    if value is None or isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        preferred = [v for k, v in value.items() if isinstance(v, str) and "desc" in k.lower()]
+        candidates = preferred or [v for v in value.values() if isinstance(v, str)]
+        return max(candidates, key=len) if candidates else None
+    if isinstance(value, list):
+        parts = [_as_text(item) for item in value]
+        joined = "\n\n".join(part for part in parts if part)
+        return joined or None
+    return None
+
+
+#: Keys under which a record routinely wraps its own fields. JSON:API uses
+#: "attributes", GraphQL connections use "node", and hand-rolled Next.js props
+#: use "data". The posting's title may sit outside the envelope and its URL
+#: inside it, so both levels have to be searched.
+_ENVELOPE_KEYS = ("data", "node", "attributes", "fields", "job", "posting", "jobData")
+
+
 def _first_value(item: dict[str, Any], keys: tuple[str, ...]) -> Any:
     for key in keys:
         value = item.get(key)
         if value not in (None, "", [], {}):
             return value
+    # Only one level deeper, and only through a known envelope: an unbounded
+    # search would start pulling fields off unrelated nested objects.
+    for envelope_key in _ENVELOPE_KEYS:
+        envelope = item.get(envelope_key)
+        if not isinstance(envelope, dict):
+            continue
+        for key in keys:
+            value = envelope.get(key)
+            if value not in (None, "", [], {}):
+                return value
     return None
 
 

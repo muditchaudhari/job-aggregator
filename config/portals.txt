@@ -27,6 +27,10 @@ https://jobs.smartrecruiters.com/PHONEPELIMITED | PhonePe
 # fetched client-side from boards-api.greenhouse.io, so the careers page itself
 # contains no postings at any tier. Point at the board instead.
 https://job-boards.greenhouse.io/adyen | Adyen
+# An in-house careers site with no ATS behind it: the board is server-rendered
+# into __NEXT_DATA__, so the generic embedded-JSON tier reads it. Note the same
+# payload carries a larger internal-only board, which the extractor skips.
+https://www.deshawindia.com/careers/work-with-us | D. E. Shaw India
 https://jobs.uber.com/en/jobs/?location=Bengaluru&radius=100 | Uber
 https://www.salesforce.com/company/careers/jobs/?country=India&region=Karn%C4%81taka&location=Bangalore&page=1 | Salesforce
 # ServiceNow answers non-browser clients with HTTP 403 (bot protection), so it

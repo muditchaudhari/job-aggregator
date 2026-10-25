@@ -804,3 +804,85 @@ class TestSmartRecruitersLinksToAPageNotTheApi:
         }])
 
         assert jobs[0].url == "https://jobs.smartrecruiters.com/OTHERCO/7"
+
+
+class TestEmbeddedJsonHarvestsWrappedRecords:
+    """An in-house board rendered into __NEXT_DATA__ extracted nothing.
+
+    Three separate reasons, all of which a custom careers site can hit:
+    each record kept its URL inside a "data" envelope while its title sat
+    outside, so the URL lookup failed and every record was discarded; the
+    payload also carried a larger INTERNAL board, which "largest list wins"
+    would have preferred over the public one; and the description was an
+    object keyed by audience rather than a string.
+    """
+
+    BASE = "https://example.com/careers/work-with-us"
+
+    def _payload(self, **extra):
+        return {
+            "props": {
+                "pageProps": {
+                    "regularJobs": [
+                        {
+                            "id": 6952,
+                            "displayName": "Software Engineer (Windows Engineering)",
+                            "office": [{"abbreviation": "HYD", "name": "Hyderabad"}],
+                            "data": {
+                                "jobUrl": "Software-Engineer-Windows-Engineering-6952",
+                                "jobDescription": {
+                                    "websiteDescription": "<p>Build things.</p>"
+                                },
+                            },
+                        }
+                    ],
+                    **extra,
+                }
+            }
+        }
+
+    def _extract(self, payload):
+        import json
+
+        from app.extractors.embedded_json import extract_embedded_jobs
+
+        html = (
+            '<html><body><script id="__NEXT_DATA__" type="application/json">'
+            f"{json.dumps(payload)}</script></body></html>"
+        )
+        return extract_embedded_jobs(html, self.BASE)
+
+    def test_a_url_inside_an_envelope_is_found(self) -> None:
+        jobs = self._extract(self._payload())
+
+        assert len(jobs) == 1
+        assert jobs[0].title == "Software Engineer (Windows Engineering)"
+        assert jobs[0].url == (
+            "https://example.com/careers/Software-Engineer-Windows-Engineering-6952"
+        )
+        assert jobs[0].location == "Hyderabad"
+        assert "Build things." in (jobs[0].description or "")
+
+    def test_the_internal_board_loses_to_the_public_one(self) -> None:
+        internal = [
+            {"id": i, "displayName": f"Internal role {i}", "data": {"jobUrl": f"i-{i}"}}
+            for i in range(50)
+        ]
+
+        jobs = self._extract(self._payload(internalJobs=internal))
+
+        assert len(jobs) == 1
+        assert "Internal" not in jobs[0].title
+
+    def test_a_named_job_list_beats_a_longer_anonymous_one(self) -> None:
+        noise = {
+            "unrelated": [
+                {"displayName": f"Row {i}", "data": {"jobUrl": f"n-{i}"}}
+                for i in range(30)
+            ]
+        }
+
+        jobs = self._extract(self._payload(**noise))
+
+        assert len(jobs) == 1
+        assert jobs[0].title.startswith("Software Engineer")
