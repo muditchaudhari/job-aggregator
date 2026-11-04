@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 
 from app.models.enums import EmploymentType, SeniorityLevel
+from app.normalization.ladders import seniority_from_ladder
 from app.utils.text import find_keywords, normalize_key
 
 _EMPLOYMENT_PATTERNS: tuple[tuple[EmploymentType, tuple[str, ...]], ...] = (
@@ -169,14 +170,28 @@ def seniority_from_prose(text: str | None) -> SeniorityLevel:
     )
 
 
-def parse_seniority(title: str | None, description: str | None = None) -> SeniorityLevel:
+def parse_seniority(
+    title: str | None,
+    description: str | None = None,
+    *,
+    ladder: str | None = None,
+) -> SeniorityLevel:
     """Infer seniority, weighting the title far above the description.
 
     The title is where seniority is actually declared. A description mentioning
     "you will work with senior engineers" says nothing about the level of *this*
     role, so the description is consulted only when the title is silent, and
     then only for unambiguous words.
+
+    ``ladder`` names an industry grade scheme (see ``normalization.ladders``)
+    and is consulted *first*, because where one applies our own words read the
+    title wrongly rather than incompletely: "Senior Analyst" is a mid-level
+    bank grade, and the generic matcher would see "senior" and stop.
     """
+    from_ladder = seniority_from_ladder(title, ladder)
+    if from_ladder is not SeniorityLevel.UNKNOWN:
+        return from_ladder
+
     from_title = _match_seniority(normalize_key(title))
     if from_title is not SeniorityLevel.UNKNOWN:
         return from_title

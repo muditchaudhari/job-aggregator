@@ -18,6 +18,8 @@ from typing import Any
 
 import yaml
 
+from app.normalization.ladders import ladder_names
+
 CONFIG_DIR = Path("config")
 PORTALS_FILE = CONFIG_DIR / "portals.txt"
 SKILLS_FILE = CONFIG_DIR / "skills.txt"
@@ -32,6 +34,9 @@ class ConfigError(Exception):
 class Portal:
     url: str
     name: str | None = None
+    #: Named industry grade scheme for reading this board's titles, e.g.
+    #: "banking". See ``app/normalization/ladders.py``.
+    ladder: str | None = None
 
 
 @dataclass(slots=True)
@@ -73,8 +78,10 @@ def load_portals(path: Path = PORTALS_FILE) -> list[Portal]:
     seen: set[str] = set()
 
     for line in _read_lines(path):
-        url, _, name = line.partition("|")
+        url, _, rest = line.partition("|")
+        name, _, options = rest.partition("|")
         url, name = url.strip(), name.strip() or None
+        ladder = _portal_option(options, "ladder", path, line)
         if not url.startswith(("http://", "https://")):
             raise ConfigError(
                 f"{path}: not a URL — {line!r}\n"
@@ -85,11 +92,35 @@ def load_portals(path: Path = PORTALS_FILE) -> list[Portal]:
         if url in seen:
             continue
         seen.add(url)
-        portals.append(Portal(url=url, name=name))
+        portals.append(Portal(url=url, name=name, ladder=ladder))
 
     if not portals:
         raise ConfigError(f"{path} has no links in it — add at least one career page URL")
     return portals
+
+
+def _portal_option(raw: str, key: str, path: Path, line: str) -> str | None:
+    """Read ``key=value`` from a portal line's optional third field.
+
+    Rejects an unknown ladder rather than ignoring it: a typo that silently
+    does nothing is worse here than an error, because the symptom would be
+    postings quietly scored on the wrong scale.
+    """
+    raw = raw.strip()
+    if not raw:
+        return None
+    for part in raw.split(","):
+        name, _, value = part.partition("=")
+        if name.strip() != key:
+            continue
+        value = value.strip()
+        if key == "ladder" and value not in ladder_names():
+            raise ConfigError(
+                f"{path}: unknown ladder {value!r} in {line!r}\n"
+                f"  known ladders: {', '.join(ladder_names())}"
+            )
+        return value or None
+    return None
 
 
 def load_skills(path: Path = SKILLS_FILE) -> list[str]:

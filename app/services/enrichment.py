@@ -62,7 +62,12 @@ class JobEnricher:
                 continue
 
             before = job.seniority
-            self._apply(job, detail)
+            # The ladder is stored on the board. Without passing it the
+            # detail pass re-reads a bank title on the tech ladder and undoes
+            # what normalisation got right.
+            self._apply(
+                job, detail, (self.scraper.company.config or {}).get("title_ladder")
+            )
             report.enriched += 1
             if job.seniority is not before:
                 report.reclassified += 1
@@ -111,7 +116,7 @@ class JobEnricher:
         return [job for _, job in scored]
 
     @staticmethod
-    def _apply(job: Job, detail: object) -> None:
+    def _apply(job: Job, detail: object, ladder: str | None = None) -> None:
         from app.scrapers.base import JobDetail
 
         assert isinstance(detail, JobDetail)
@@ -127,7 +132,12 @@ class JobEnricher:
         # "Senior" in the title outranks whatever the body implies.
         if job.seniority in (SeniorityLevel.UNKNOWN, None):
             revised = parse_seniority(
-                job.title, f"{job.requirements or ''}\n{job.description or ''}"
+                job.title,
+                f"{job.requirements or ''}\n{job.description or ''}",
+                # The scraper knows which board this is, and the ladder is
+                # stored on it. Without this the detail pass re-reads a bank
+                # title on the tech ladder and undoes the normalisation.
+                ladder=ladder,
             )
             if revised is not SeniorityLevel.UNKNOWN:
                 job.seniority = revised

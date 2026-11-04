@@ -7,6 +7,13 @@
 # Lines starting with # are ignored, so comment one out to skip it.
 # Optionally give it a name with a pipe:   <url> | <name>
 #
+# A third field can name an industry grade scheme for reading that board's
+# titles:   <url> | <name> | ladder=banking
+# Banks grade by Analyst / Associate / AVP / VP / ED / MD, not by the
+# junior-senior-staff words the default reader knows — without this,
+# "Senior Analyst" (a mid-level grade) reads two levels too high and
+# "Analyst" (the entry grade) reads as nothing at all.
+#
 # Then run:  make run
 
 https://boards.greenhouse.io/gitlab | GitLab
@@ -18,7 +25,7 @@ https://careers.adobe.com/us/en/search-results | Adobe
 
 https://job-boards.greenhouse.io/razorpaysoftwareprivatelimited | Razorpay
 https://job-boards.eu.greenhouse.io/groww?offices%5B%5D=4018977101&offices%5B%5D=4018978101 | Groww
-https://visa.wd5.myworkdayjobs.com/Visa?locationCountry=c4f78be1a8f14da0ab49ce1162348a5e | Visa
+https://visa.wd5.myworkdayjobs.com/Visa?locationCountry=c4f78be1a8f14da0ab49ce1162348a5e | Visa | ladder=banking
 # PhonePe's own careers pages (phonepe.com/careers/, .../job-openings/) are a
 # marketing shell: the listings load client-side from SmartRecruiters, and a
 # plain fetch sees only the site's navigation. Point straight at the board.
@@ -35,7 +42,7 @@ https://www.deshawindia.com/careers/work-with-us | D. E. Shaw India
 # client-side state, so the URL cannot be replayed by fetching it — the adapter
 # lifts locationId out and re-expresses it as the API's selectedLocationsFacet.
 # Keep the locationId: without it the query returns the whole global board.
-https://jpmc.fa.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1001/jobs?location=Bengaluru%2C+Karnataka%2C+India&locationId=300000081145775&locationLevel=city&mode=location&radius=25&radiusUnit=MI | JPMorgan Chase
+https://jpmc.fa.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1001/jobs?location=Bengaluru%2C+Karnataka%2C+India&locationId=300000081145775&locationLevel=city&mode=location&radius=25&radiusUnit=MI | JPMorgan Chase | ladder=banking
 https://jobs.uber.com/en/jobs/?location=Bengaluru&radius=100 | Uber
 https://www.salesforce.com/company/careers/jobs/?country=India&region=Karn%C4%81taka&location=Bangalore&page=1 | Salesforce
 
@@ -43,14 +50,14 @@ https://www.salesforce.com/company/careers/jobs/?country=India&region=Karn%C4%81
 https://jobs.lever.co/cred | CRED
 https://job-boards.greenhouse.io/slice | slice
 https://jobs.ashbyhq.com/navi | Navi
-https://careers.mastercard.com/us/en/search-results | Mastercard
+https://careers.mastercard.com/us/en/search-results | Mastercard | ladder=banking
 
 # --- Banks -----------------------------------------------------------------
 # Workday takes filters as appliedFacets, not query parameters, and the adapter
 # translates them. Keep the facet: Target has 2,000 postings worldwide and 67
 # in India, and an unfiltered fetch truncates at the pagination cap instead.
-https://barclays.wd3.myworkdayjobs.com/External_Career_Site_Barclays | Barclays
-https://citi.wd5.myworkdayjobs.com/2?Country_and_Jurisdiction=c4f78be1a8f14da0ab49ce1162348a5e | Citi
+https://barclays.wd3.myworkdayjobs.com/External_Career_Site_Barclays | Barclays | ladder=banking
+https://citi.wd5.myworkdayjobs.com/2?Country_and_Jurisdiction=c4f78be1a8f14da0ab49ce1162348a5e | Citi | ladder=banking
 
 # --- Product & infra -------------------------------------------------------
 https://job-boards.greenhouse.io/databricks | Databricks
@@ -75,17 +82,17 @@ https://jobs.lever.co/zeta | Zeta
 # the adapter finds in the page and caches. Job links stay on the branded
 # domain, which uses /<locale>/sites/<site>/job/<id> — the Oracle-hosted
 # /hcmUI/CandidateExperience path redirects to its 404 page there.
-https://careers.americanexpress.com/en/sites/CX_1/jobs?location=Bengaluru%2C+KA%2C+India&locationId=300000032718926&locationLevel=city&mode=location&radius=25&radiusUnit=MI | American Express
+https://careers.americanexpress.com/en/sites/CX_1/jobs?location=Bengaluru%2C+KA%2C+India&locationId=300000032718926&locationLevel=city&mode=location&radius=25&radiusUnit=MI | American Express | ladder=banking
 # SuccessFactors Career Site Builder: the search page holds no postings and
 # loads them from /services/recruiting/v1/jobs. Keep facetFilters — it is read
 # straight out of this URL, and without it the whole global board is fetched
 # (1,039 postings against 100 in Bangalore).
-https://jobs.standardchartered.com/search/?facetFilters=%7B%22jobLocationCity%22%3A%5B%22Bangalore%22%5D%7D | Standard Chartered
+https://jobs.standardchartered.com/search/?facetFilters=%7B%22jobLocationCity%22%3A%5B%22Bangalore%22%5D%7D | Standard Chartered | ladder=banking
 # In-house site, no ATS behind it, and it refuses plain HTTP clients with 403
 # — our fetcher's header set gets through. The server honours its own filters,
 # so keep country and location; pagesize caps at 50 server-side and the
 # adapter follows ?page= from there.
-https://www.wellsfargojobs.com/en/jobs/?search=&country=India&location=BENGALURU&pagesize=50 | Wells Fargo
+https://www.wellsfargojobs.com/en/jobs/?search=&country=India&location=BENGALURU&pagesize=50 | Wells Fargo | ladder=banking
 https://jobs.ashbyhq.com/bureau | Bureau
 https://job-boards.greenhouse.io/coinbase | Coinbase
 

@@ -77,6 +77,17 @@ def _sync_portals(session: Session, config: UserConfig) -> list[Company]:
         elif portal.name and existing.name != portal.name:
             repository.update(existing, name=portal.name)
 
+        # Same reasoning as the cadence below: the ladder lives in the file,
+        # so a change there has to reach the stored company or editing it
+        # would appear to do nothing.
+        if (existing.config or {}).get("title_ladder") != portal.ladder:
+            config_values = {**(existing.config or {})}
+            if portal.ladder:
+                config_values["title_ladder"] = portal.ladder
+            else:
+                config_values.pop("title_ladder", None)
+            repository.update(existing, config=config_values)
+
         # Keep the cadence in step with preferences.yml. Without this the
         # interval is whatever it was when the portal was first registered,
         # and editing the file would appear to do nothing.

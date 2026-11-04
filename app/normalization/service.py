@@ -38,6 +38,15 @@ _URL_LIMIT = 2048
 _LOCATION_LIMIT = 512
 
 
+def _ladder_for(company: Company) -> str | None:
+    """The industry grade scheme this board's titles follow, if any.
+
+    Stored on the company by the config sync, so normalisation needs no extra
+    argument and a scheduled scan reads it the same way the CLI does.
+    """
+    return (company.config or {}).get("title_ladder")
+
+
 def normalize_jobs(
     raws: list[RawJob],
     *,
@@ -111,7 +120,7 @@ def normalize_job(
         location_country=location.country,
         remote_type=location.remote_type,
         employment_type=parse_employment_type(raw.employment_type, title, description),
-        seniority=parse_seniority(title, description),
+        seniority=parse_seniority(title, description, ladder=_ladder_for(company)),
         description=description,
         requirements=requirements,
         detected_skills=detect_skills(title, description, requirements),
