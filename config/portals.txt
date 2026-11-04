@@ -60,6 +60,42 @@ https://job-boards.greenhouse.io/zscaler | Zscaler
 https://target.wd5.myworkdayjobs.com/targetcareers?Location_Country=c4f78be1a8f14da0ab49ce1162348a5e | Target
 https://expedia.wd108.myworkdayjobs.com/search | Expedia
 https://careers.qualcomm.com/careers | Qualcomm
+
+# === Added 2026-11-04 ========================================================
+# All on adapters we already had, so no new code. Each was verified against
+# its live board before being added: postings extracted, and every posting
+# carrying both a title and a URL.
+
+# --- Fintech & payments --------------------------------------------------
+https://job-boards.greenhouse.io/stripe | Stripe
+https://job-boards.greenhouse.io/toast | Toast
+https://jobs.lever.co/zeta | Zeta
+https://jobs.ashbyhq.com/bureau | Bureau
+https://job-boards.greenhouse.io/coinbase | Coinbase
+
+# --- Indian product ------------------------------------------------------
+https://jobs.lever.co/meesho | Meesho
+https://jobs.smartrecruiters.com/swiggy | Swiggy
+https://jobs.smartrecruiters.com/freshworks | Freshworks
+
+# --- Data & infra --------------------------------------------------------
+https://job-boards.greenhouse.io/purestorage | Pure Storage
+https://job-boards.greenhouse.io/mongodb | MongoDB
+https://job-boards.greenhouse.io/fivetran | Fivetran
+https://job-boards.greenhouse.io/elastic | Elastic
+https://job-boards.greenhouse.io/commvault | Commvault
+https://job-boards.greenhouse.io/grafanalabs | Grafana Labs
+https://jobs.ashbyhq.com/notion | Notion
+https://job-boards.greenhouse.io/figma | Figma
+
+# --- AI/ML ---------------------------------------------------------------
+https://jobs.ashbyhq.com/sarvam | Sarvam AI
+
+# --- Global product ------------------------------------------------------
+https://jobs.lever.co/linkedin | LinkedIn
+https://job-boards.greenhouse.io/airbnb | Airbnb
+https://jobs.smartrecruiters.com/grab | Grab
+https://job-boards.greenhouse.io/agoda | Agoda
 # careers.servicenow.com answers non-browser clients with 403, but the board
 # behind it is SmartRecruiters, which has a public API and no bot wall.
 https://jobs.smartrecruiters.com/servicenow | ServiceNow
