@@ -32,6 +32,22 @@ class GenericHtmlScraper(HtmlListingScraper):
             location="[class*='location']",
             date="time, [class*='date']",
         ),
+        # Bootstrap-style cards with a meta list. Two conventions the card
+        # set below misses: the class is often "card-job" rather than
+        # "job-card", and the location sits in a generic <li> inside a meta
+        # list with no "location" class on it at all — only its position in
+        # the list identifies it. Without this the title and URL extract and
+        # the location silently comes back empty, which scores every posting
+        # to zero on location rather than failing visibly.
+        SelectorSet(
+            container="div[class*='card-job'], li[class*='card-job'], "
+            "div[class*='card'][class*='job']",
+            title="[class*='card-title'] a, h2 a, h3 a, h4 a, a",
+            url="[class*='card-title'] a, h2 a, h3 a, h4 a, a",
+            location="[class*='job-meta'] li:first-of-type, "
+            "[class*='meta'] [class*='location'], [class*='location']",
+            date="[class*='job-meta'] time, time, [class*='date']",
+        ),
         # Card layouts: a repeated <div>/<article> per posting. Extremely
         # common on hand-built career pages (Apple's board is one), and
         # invisible to the <li>/<tr> patterns above.

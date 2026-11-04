@@ -1016,3 +1016,58 @@ class TestSuccessFactorsCareerSiteBuilder:
 
         source = inspect.getsource(SuccessFactorsScraper._csb_page)
         assert '"pageNumber": page' in source
+
+
+class TestBootstrapCardJobLayout:
+    """Titles and URLs extracted; every location came back empty.
+
+    Two conventions the card selector set missed. The container class is often
+    "card-job" rather than "job-card", and the location sits in a plain <li>
+    inside a meta list with no "location" class on it — only its position in
+    the list identifies it.
+
+    The failure mode is the dangerous kind: extraction *succeeds*, the portal
+    reports jobs, and every posting silently scores zero on location. It reads
+    as "nothing matches you" rather than as a broken selector.
+    """
+
+    CARD = """
+    <div class="grid job-listing">
+      <div class="card card-job"><div class="card-body">
+        <h2 class="card-title"><a class="stretched-link"
+           href="/en/jobs/r-571628/senior-software-engineer/">Senior Software Engineer</a></h2>
+        <ul class="list-inline job-meta">
+          <li class="list-inline-item">BENGALURU, Karnātaka</li>
+          <li class="list-inline-item">Technology</li>
+        </ul>
+      </div></div>
+    </div>
+    """
+
+    def _extract(self, html: str):
+        from app.extractors.selector_extractor import extract_with_selectors
+        from app.scrapers.adapters.generic_html import GenericHtmlScraper
+
+        for selectors in GenericHtmlScraper.builtin_selectors:
+            jobs = extract_with_selectors(
+                html, "https://www.wellsfargojobs.com/en/jobs/", selectors
+            )
+            if jobs and jobs[0].location:
+                return jobs
+        return []
+
+    def test_location_is_read_from_the_meta_list(self) -> None:
+        jobs = self._extract(self.CARD)
+
+        assert jobs, "no selector set produced a located posting"
+        assert jobs[0].title == "Senior Software Engineer"
+        assert "BENGALURU" in (jobs[0].location or "")
+        assert jobs[0].url == (
+            "https://www.wellsfargojobs.com/en/jobs/r-571628/senior-software-engineer/"
+        )
+
+    def test_the_reversed_class_name_still_matches(self) -> None:
+        """"job-card" was already handled; "card-job" was not."""
+        jobs = self._extract(self.CARD.replace("card card-job", "job-card"))
+
+        assert jobs and jobs[0].title == "Senior Software Engineer"

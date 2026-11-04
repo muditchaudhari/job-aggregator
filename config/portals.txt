@@ -81,6 +81,11 @@ https://careers.americanexpress.com/en/sites/CX_1/jobs?location=Bengaluru%2C+KA%
 # straight out of this URL, and without it the whole global board is fetched
 # (1,039 postings against 100 in Bangalore).
 https://jobs.standardchartered.com/search/?facetFilters=%7B%22jobLocationCity%22%3A%5B%22Bangalore%22%5D%7D | Standard Chartered
+# In-house site, no ATS behind it, and it refuses plain HTTP clients with 403
+# — our fetcher's header set gets through. The server honours its own filters,
+# so keep country and location; pagesize caps at 50 server-side and the
+# adapter follows ?page= from there.
+https://www.wellsfargojobs.com/en/jobs/?search=&country=India&location=BENGALURU&pagesize=50 | Wells Fargo
 https://jobs.ashbyhq.com/bureau | Bureau
 https://job-boards.greenhouse.io/coinbase | Coinbase
 
