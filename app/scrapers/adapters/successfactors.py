@@ -40,6 +40,11 @@ CSB_PATH = "/services/recruiting/v1/jobs"
 #: of it are ignored and ten rows come back regardless.
 CSB_PAGE_SIZE = 10
 CSB_MAX_PAGES = 40
+#: Tried in order when a tenant's locale cannot be read from its URL. A guess
+#: about spelling, not about any particular customer: the endpoint requires
+#: ``locale`` and answers 200 with zero rows for a wrong one, so there is no
+#: way to ask it which it wants. Whichever returns rows is cached per company.
+CSB_LOCALE_FALLBACKS = ("en_GB", "en_US")
 
 
 class SuccessFactorsScraper(HtmlListingScraper):
@@ -116,13 +121,12 @@ class SuccessFactorsScraper(HtmlListingScraper):
             return {}
         return parsed if isinstance(parsed, dict) else {}
 
-    def _csb_page(self, page: int) -> Any:
+    def _csb_page(self, page: int, locale: str) -> Any:
         return self.fetcher.post_json(
             self._csb_origin() + CSB_PATH,
             {
-                "searchText": "",
                 "facetFilters": self._csb_filters(),
-                "locale": self._csb_locale(),
+                "locale": locale,
                 # NOT "from"/"offset"/"start": those are accepted and ignored,
                 # so every page came back as page one. Measured by distinct ids
                 # across ten pages — 73 with this key, 16 with the others,
@@ -131,25 +135,65 @@ class SuccessFactorsScraper(HtmlListingScraper):
             },
         )
 
-    def _csb_locale(self) -> str:
-        return "en_GB"
+    def _csb_locale_candidates(self) -> list[str]:
+        """Locales to try, best guess first.
+
+        ``locale`` is required, and a wrong one is not an error: the endpoint
+        answers 200 with ``totalJobs: 0``. So it cannot be hardcoded — a
+        tenant on ``en_US`` would look like an empty board rather than a
+        misconfiguration — and it cannot be probed by status code either.
+
+        A locale the career URL states is trusted; otherwise the common
+        spellings are tried in turn and the one that returns rows is cached.
+        """
+        cached = (self.company.config or {}).get("csb_locale")
+        if cached:
+            return [str(cached)]
+
+        found: list[str] = []
+        parsed = urlparse(self.company.career_url)
+        for chunk in (*parsed.path.split("/"), *parse_qs(parsed.query).get("locale", [])):
+            if re.fullmatch(r"[a-z]{2}_[A-Z]{2}", chunk or ""):
+                found.append(chunk)
+        for fallback in CSB_LOCALE_FALLBACKS:
+            if fallback not in found:
+                found.append(fallback)
+        return found
+
+    def _remember_locale(self, locale: str) -> None:
+        # Reassigned rather than mutated so SQLAlchemy sees the JSON change.
+        self.company.config = {**(self.company.config or {}), "csb_locale": locale}
 
     def _fetch_csb(self) -> FetchResult | None:
         """Return the JSON board, or ``None`` on a tenant without this endpoint."""
-        try:
-            first = self._csb_page(0)
-        except Exception as exc:
-            self.log.debug("successfactors.no_csb_endpoint", error=str(exc))
+        first = None
+        locale = ""
+        for candidate in self._csb_locale_candidates():
+            try:
+                payload = self._csb_page(0, candidate)
+            except Exception as exc:
+                self.log.debug("successfactors.no_csb_endpoint", error=str(exc))
+                return None
+            if not isinstance(payload, dict) or "jobSearchResult" not in payload:
+                return None
+            if payload.get("jobSearchResult"):
+                first, locale = payload, candidate
+                break
+            self.log.debug("successfactors.csb_empty_for_locale", locale=candidate)
+
+        if first is None:
+            # The endpoint exists and answers, but no locale we know returns
+            # rows. Fall through to the HTML path rather than report an empty
+            # board, which would read as "this company has no openings".
             return None
-        if not isinstance(first, dict) or "jobSearchResult" not in first:
-            return None
+        self._remember_locale(locale)
 
         total = int(first.get("totalJobs") or 0)
         rows: list[dict[str, Any]] = list(first.get("jobSearchResult") or [])
         pages = min(CSB_MAX_PAGES, -(-total // CSB_PAGE_SIZE) if total else 1)
         for page in range(1, pages):
             try:
-                payload = self._csb_page(page)
+                payload = self._csb_page(page, locale)
             except Exception as exc:
                 self.log.debug("successfactors.csb_page_failed", page=page, error=str(exc))
                 break
@@ -168,12 +212,18 @@ class SuccessFactorsScraper(HtmlListingScraper):
     def _jobs_from_csb(self, payload: dict[str, Any]) -> list[RawJob]:
         jobs: list[RawJob] = []
         origin = self._csb_origin()
-        locale = self._csb_locale()
+        default_locale = (
+            (self.company.config or {}).get("csb_locale") or CSB_LOCALE_FALLBACKS[0]
+        )
         for row in payload.get("jobSearchResult") or []:
             entry = row.get("response") if isinstance(row, dict) else None
             if not isinstance(entry, dict):
                 continue
             job_id = entry.get("id")
+            # Each posting names its own locale, and the link carries it as a
+            # suffix — so this is read per posting rather than assumed.
+            locales = entry.get("supportedLocales") or []
+            locale = str(locales[0]) if locales else default_locale
             # Already percent-encoded by the API, but carrying HTML entities
             # ("&amp;") that would otherwise land in the link verbatim.
             slug = unescape(str(entry.get("urlTitle") or entry.get("unifiedUrlTitle") or ""))
@@ -183,12 +233,22 @@ class SuccessFactorsScraper(HtmlListingScraper):
                     url=f"{origin}/job/{slug}/{job_id}-{locale}" if job_id and slug else None,
                     external_id=str(job_id) if job_id else None,
                     location=clean_text(", ".join(entry.get("jobLocationShort") or [])),
-                    department=clean_text(", ".join(entry.get("mfield1") or [])),
+                    # "mfield1" is a tenant-configured custom field, not part
+                    # of the schema: it holds the job category on the tenants
+                    # seen so far, but another could put anything there, so a
+                    # long value is treated as not-a-category and dropped.
+                    department=self._csb_category(entry),
                     posted_at=clean_text(entry.get("unifiedStandardStart")),
                     raw=entry,
                 )
             )
         return jobs
+
+    @staticmethod
+    def _csb_category(entry: dict[str, Any]) -> str | None:
+        values = [v for v in (entry.get("mfield1") or []) if isinstance(v, str)]
+        joined = clean_text(", ".join(values))
+        return joined if joined and len(joined) <= 80 else None
 
     def fetch(self) -> FetchResult:
         """Fetch page one, then follow the offset pagination.
