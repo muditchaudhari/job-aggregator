@@ -23,6 +23,7 @@ class ATSType(StrEnum):
     APPLE = "apple"
     EIGHTFOLD = "eightfold"
     UBER = "uber"
+    ORACLE = "oracle"
     CUSTOM_REACT = "custom_react"
     GENERIC_HTML = "generic_html"
     UNKNOWN = "unknown"

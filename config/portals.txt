@@ -31,6 +31,11 @@ https://job-boards.greenhouse.io/adyen | Adyen
 # into __NEXT_DATA__, so the generic embedded-JSON tier reads it. Note the same
 # payload carries a larger internal-only board, which the extractor skips.
 https://www.deshawindia.com/careers/work-with-us | D. E. Shaw India
+# Oracle Fusion Recruiting Cloud. The page is an SPA whose location filter is
+# client-side state, so the URL cannot be replayed by fetching it — the adapter
+# lifts locationId out and re-expresses it as the API's selectedLocationsFacet.
+# Keep the locationId: without it the query returns the whole global board.
+https://jpmc.fa.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1001/jobs?location=Bengaluru%2C+Karnataka%2C+India&locationId=300000081145775&locationLevel=city&mode=location&radius=25&radiusUnit=MI | JPMorgan Chase
 https://jobs.uber.com/en/jobs/?location=Bengaluru&radius=100 | Uber
 https://www.salesforce.com/company/careers/jobs/?country=India&region=Karn%C4%81taka&location=Bangalore&page=1 | Salesforce
 # ServiceNow answers non-browser clients with HTTP 403 (bot protection), so it

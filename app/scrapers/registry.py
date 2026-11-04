@@ -16,6 +16,7 @@ from app.scrapers.adapters.eightfold import EightfoldScraper
 from app.scrapers.adapters.generic_html import GenericHtmlScraper
 from app.scrapers.adapters.greenhouse import GreenhouseScraper
 from app.scrapers.adapters.lever import LeverScraper
+from app.scrapers.adapters.oracle import OracleScraper
 from app.scrapers.adapters.phenom import PhenomScraper
 from app.scrapers.adapters.smartrecruiters import SmartRecruitersScraper
 from app.scrapers.adapters.successfactors import SuccessFactorsScraper
@@ -35,6 +36,7 @@ ADAPTERS: tuple[type[BaseScraper], ...] = (
     EightfoldScraper,
     UberScraper,
     PhenomScraper,
+    OracleScraper,
     WorkdayScraper,
     SmartRecruitersScraper,
     SuccessFactorsScraper,
