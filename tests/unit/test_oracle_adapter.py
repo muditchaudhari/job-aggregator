@@ -68,8 +68,14 @@ class TestEndpointReconstruction:
             "/recruitingCEJobRequisitions"
         )
 
-    def test_a_non_oracle_host_is_rejected(self) -> None:
-        with pytest.raises(PermanentFetchError, match="not a recognisable Oracle"):
+    def test_an_unrelated_board_is_rejected(self) -> None:
+        """Rejected on the missing site id, not the host.
+
+        A non-Oracle host is no longer disqualifying by itself — it may be a
+        white-labelled tenant — so the site id is what identifies the platform
+        in the URL. See TestWhiteLabelledTenants.
+        """
+        with pytest.raises(PermanentFetchError, match="no site id"):
             _scraper("https://boards.greenhouse.io/adyen")._parts()
 
     def test_a_url_without_a_site_id_is_rejected(self) -> None:
@@ -127,3 +133,103 @@ class TestDetection:
 
         assert get_adapter(ATSType.ORACLE) is OracleScraper
         assert ATSType.ORACLE in api_backed_types()
+
+
+VANITY_URL = (
+    "https://careers.americanexpress.com/en/sites/CX_1/jobs"
+    "?location=Bengaluru%2C+KA%2C+India&locationId=300000032718926"
+    "&locationLevel=city&mode=location&radius=25&radiusUnit=MI"
+)
+
+
+class TestWhiteLabelledTenants:
+    """A tenant behind the company's own domain broke two assumptions.
+
+    The host regex required ``<tenant>.fa.oraclecloud.com``, but a regional
+    tenant is ``egug.fa.us2.oraclecloud.com``. And a vanity domain serves the
+    UI without the REST API: asking it for the API earns a redirect to the
+    site's 404 page, which answers 200 — so neither the API nor the job link
+    can be checked by status code alone.
+    """
+
+    def test_a_regional_oracle_host_is_accepted(self) -> None:
+        from app.scrapers.adapters.oracle import _HOST_RE
+
+        assert _HOST_RE.match("egug.fa.us2.oraclecloud.com")
+        assert _HOST_RE.match("jpmc.fa.oraclecloud.com")
+        assert not _HOST_RE.match("careers.americanexpress.com")
+
+    def test_the_tenant_is_read_from_the_vanity_page(self) -> None:
+        """The real host is in that page's HTML, because it loads assets from it."""
+        company = Company(
+            name="Amex", career_url=VANITY_URL, website="americanexpress.com",
+            ats_type=ATSType.ORACLE,
+        )
+        scraper = OracleScraper(company, _FakeFetcher(
+            '<link href="https://egug.fa.us2.oraclecloud.com/hcmUI/CandExpStatic/x.css">'
+        ))
+
+        assert scraper._parts() == ("https://egug.fa.us2.oraclecloud.com", "CX_1")
+        # Cached, so the extra page fetch happens once rather than every run.
+        assert company.api_endpoint == "https://egug.fa.us2.oraclecloud.com"
+
+    def test_a_vanity_job_link_omits_the_hcmui_prefix(self) -> None:
+        """The branded site serves /<locale>/sites/<site>/job/<id>.
+
+        Verified in a browser: the prefixed path redirects to the vanity 404.
+        """
+        company = Company(
+            name="Amex", career_url=VANITY_URL, website="americanexpress.com",
+            ats_type=ATSType.ORACLE, api_endpoint="https://egug.fa.us2.oraclecloud.com",
+        )
+        jobs = OracleScraper(company, None).extract_jobs(_result_for(
+            {"Id": 26014373, "Title": "Financial Systems Analyst II"}
+        ))
+
+        assert jobs[0].url == (
+            "https://careers.americanexpress.com/en/sites/CX_1/job/26014373"
+        )
+        assert "hcmUI" not in jobs[0].url
+
+    def test_an_oracle_hosted_link_keeps_the_hcmui_prefix(self) -> None:
+        company = Company(
+            name="JPMC", career_url=JOBS_URL, website="jpmorganchase.com",
+            ats_type=ATSType.ORACLE,
+        )
+        jobs = OracleScraper(company, None).extract_jobs(_result_for(
+            {"Id": 1, "Title": "X"}
+        ))
+
+        assert jobs[0].url == (
+            "https://jpmc.fa.oraclecloud.com/hcmUI/CandidateExperience"
+            "/en/sites/CX_1001/job/1"
+        )
+
+    def test_a_domain_with_no_tenant_behind_it_is_rejected(self) -> None:
+        company = Company(
+            name="Nope", career_url="https://careers.example.com/en/sites/CX_1/jobs",
+            website="example.com", ats_type=ATSType.ORACLE,
+        )
+        scraper = OracleScraper(company, _FakeFetcher("<html>no tenant here</html>"))
+
+        with pytest.raises(PermanentFetchError, match="no Oracle Fusion tenant"):
+            scraper._parts()
+
+
+class _FakeFetcher:
+    def __init__(self, body: str) -> None:
+        self._body = body
+
+    def fetch(self, url: str, **_kw):
+        return FetchResult(
+            url=url, final_url=url, status_code=200, text=self._body,
+            content_type="text/html", strategy=ScrapingStrategy.HTTP, fetch_ms=1,
+        )
+
+
+def _result_for(entry: dict) -> FetchResult:
+    return FetchResult(
+        url="x", final_url="x", status_code=200, text="",
+        content_type="application/json", strategy=ScrapingStrategy.API, fetch_ms=0,
+        json_body={"requisitionList": [entry], "total": 1},
+    )

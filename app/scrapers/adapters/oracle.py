@@ -27,7 +27,15 @@ from app.utils.text import clean_text, strip_html
 
 logger = get_logger(__name__)
 
-_HOST_RE = re.compile(r"^(?P<tenant>[\w-]+)\.fa(?P<dc>\d*)\.oraclecloud\.com$")
+#: ``jpmc.fa.oraclecloud.com`` and ``egug.fa.us2.oraclecloud.com`` are both
+#: real: the region label between ``fa`` and the domain is optional.
+_HOST_RE = re.compile(r"^(?P<tenant>[\w-]+)\.fa(?:\.[\w-]+)?\.oraclecloud\.com$")
+#: Many tenants are white-labelled behind the company's own domain, which
+#: serves the UI but not the REST API. The tenant's real host appears in that
+#: page's HTML, because the page loads its own assets from it.
+_TENANT_IN_PAGE_RE = re.compile(
+    r"https://[\w-]+\.fa(?:\.[\w-]+)?\.oraclecloud\.com"
+)
 #: ``/hcmUI/CandidateExperience/en/sites/CX_1001/jobs`` — the site id follows
 #: the ``sites`` segment and is what every finder query is scoped to.
 _SITE_RE = re.compile(r"/sites/(?P<site>[\w-]+)")
@@ -57,18 +65,68 @@ class OracleScraper(BaseScraper):
     # -- Endpoint reconstruction ------------------------------------------
 
     def _parts(self) -> tuple[str, str]:
-        """Return ``(origin, site_id)`` derived from the career URL."""
+        """Return ``(api_origin, site_id)``.
+
+        The API origin is not always the career URL's own: a white-labelled
+        tenant serves the Candidate Experience UI from the company's domain
+        while the REST API stays on ``*.oraclecloud.com``, and asking the
+        vanity host for it earns a redirect to the site's 404 page.
+        """
         parsed = urlparse(self.company.career_url)
-        if not _HOST_RE.match(parsed.hostname or ""):
-            raise PermanentFetchError(
-                "not a recognisable Oracle Fusion host", url=self.company.career_url
-            )
         match = _SITE_RE.search(parsed.path)
         if not match:
             raise PermanentFetchError(
                 "Oracle Fusion URL carries no site id", url=self.company.career_url
             )
-        return f"{parsed.scheme}://{parsed.netloc}", match.group("site")
+        site = match.group("site")
+
+        if _HOST_RE.match(parsed.hostname or ""):
+            return f"{parsed.scheme}://{parsed.netloc}", site
+        return self._resolve_vanity_origin(), site
+
+    def _resolve_vanity_origin(self) -> str:
+        """Find the tenant's real host behind a company-branded domain.
+
+        Cached on the company as ``api_endpoint`` after the first scan, so this
+        costs one extra page fetch once rather than one per run.
+        """
+        if self.company.api_endpoint:
+            return self.company.api_endpoint
+
+        result = self.fetcher.fetch(self.company.career_url)
+        found = _TENANT_IN_PAGE_RE.search(result.text or "")
+        if not found:
+            raise PermanentFetchError(
+                "no Oracle Fusion tenant found behind this domain",
+                url=self.company.career_url,
+            )
+        origin = found.group(0)
+        self.company.api_endpoint = origin
+        logger.info("oracle.tenant_resolved", vanity=self.company.career_url, origin=origin)
+        return origin
+
+    def _site_origin(self) -> str:
+        """Where a *person* should be sent, which is where they came from.
+
+        A white-labelled tenant's own branded job page lives under the company
+        domain at ``/<locale>/sites/<site>/job/<id>`` — without the ``/hcmUI/
+        CandidateExperience`` prefix the Oracle-hosted sites use. Sending the
+        prefixed path to the vanity host redirects to its 404 page, which
+        answers 200, so neither shape can be checked by status alone.
+        """
+        parsed = urlparse(self.company.career_url)
+        return f"{parsed.scheme}://{parsed.netloc}"
+
+    def _job_path(self, job_id: object, site: str) -> str:
+        parsed = urlparse(self.company.career_url)
+        if _HOST_RE.match(parsed.hostname or ""):
+            return f"/hcmUI/CandidateExperience/en/sites/{site}/job/{job_id}"
+        # Preserve the locale segment the career URL itself uses.
+        locale = next(
+            (seg for seg in parsed.path.split("/") if re.fullmatch(r"[a-z]{2}(_[A-Z]{2})?", seg)),
+            "en",
+        )
+        return f"/{locale}/sites/{site}/job/{job_id}"
 
     def _finder_parts(self) -> list[str]:
         """Scope the query the way the career URL does.
@@ -148,7 +206,7 @@ class OracleScraper(BaseScraper):
     def extract_jobs(self, result: FetchResult) -> list[RawJob]:
         payload: Any = result.json_body or {}
         entries = payload.get("requisitionList", []) if isinstance(payload, dict) else []
-        origin, site = self._parts()
+        _api_origin, site = self._parts()
 
         jobs: list[RawJob] = []
         for entry in entries:
@@ -159,7 +217,7 @@ class OracleScraper(BaseScraper):
                     # The SPA's own deep link. Built rather than read: the list
                     # response carries no URL field at all.
                     url=(
-                        f"{origin}/hcmUI/CandidateExperience/en/sites/{site}/job/{job_id}"
+                        f"{self._site_origin()}{self._job_path(job_id, site)}"
                         if job_id
                         else None
                     ),

@@ -70,6 +70,12 @@ https://careers.qualcomm.com/careers | Qualcomm
 https://job-boards.greenhouse.io/stripe | Stripe
 https://job-boards.greenhouse.io/toast | Toast
 https://jobs.lever.co/zeta | Zeta
+# Oracle Fusion behind a company-branded domain: careers.americanexpress.com
+# serves the UI, while the REST API lives on the tenant (egug.fa.us2), which
+# the adapter finds in the page and caches. Job links stay on the branded
+# domain, which uses /<locale>/sites/<site>/job/<id> — the Oracle-hosted
+# /hcmUI/CandidateExperience path redirects to its 404 page there.
+https://careers.americanexpress.com/en/sites/CX_1/jobs?location=Bengaluru%2C+KA%2C+India&locationId=300000032718926&locationLevel=city&mode=location&radius=25&radiusUnit=MI | American Express
 https://jobs.ashbyhq.com/bureau | Bureau
 https://job-boards.greenhouse.io/coinbase | Coinbase
 
