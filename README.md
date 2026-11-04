@@ -35,11 +35,119 @@ Tier 5 writes its result back as a **new selector version**, so the next scan of
 that site re-enters at tier 3 and costs nothing. That is the "self-learning"
 part: you pay a model once per site, not once per scrape.
 
-### Supported platforms
+### What adapters?
 
-Greenhouse, Lever, Ashby, Workday, SmartRecruiters, SAP SuccessFactors, Oracle
-Taleo, client-rendered (React/Vue/Angular) pages, and generic HTML. The first
-five are read through their JSON APIs; the rest go through the ladder.
+Fourteen adapters, eight of them reading a JSON API rather than scraping. The
+ratio that matters is the next one: **51 boards across 12 platforms**, so
+adding a company is usually a line in `config/portals.txt` and nothing else.
+Only a platform nobody has used before costs development time.
+
+```mermaid
+mindmap
+  root((51 boards))
+    Greenhouse)Greenhouse · API · 20(
+      Stripe
+      Databricks
+      Adyen
+      GitLab
+      Pure Storage
+      Zscaler
+      Elastic
+      MongoDB
+      Toast
+      Rubrik
+      Agoda
+      Airbnb
+      Coinbase
+      Fivetran
+      Figma
+      Grafana Labs
+      Commvault
+      Razorpay
+      Groww
+      slice
+    Workday)Workday · API · 5(
+      Visa
+      Citi
+      Barclays
+      Target
+      Expedia
+    SmartRecruiters)SmartRecruiters · API · 5(
+      ServiceNow
+      Grab
+      Swiggy
+      PhonePe
+      Freshworks
+    Ashby)Ashby · API · 5(
+      Snowflake
+      Sarvam AI
+      Notion
+      Bureau
+      Navi
+    Lever)Lever · API · 4(
+      LinkedIn
+      Meesho
+      Zeta
+      CRED
+    Oracle)Oracle Fusion · API · 2(
+      JPMorgan Chase
+      American Express
+    Eightfold)Eightfold · API · 2(
+      Microsoft
+      Qualcomm
+    Phenom)Phenom · scraped · 2(
+      Adobe
+      Mastercard
+    SuccessFactors)SuccessFactors · API · 1(
+      Standard Chartered
+    InHouse)In-house sites · 5(
+      Apple
+      Uber
+      D. E. Shaw India
+      Wells Fargo
+      Salesforce
+```
+
+**Read through a JSON API** — Greenhouse, Lever, Ashby, Workday,
+SmartRecruiters, SAP SuccessFactors, Oracle Fusion Recruiting Cloud,
+Eightfold. One request returns the whole board with stable ids, so these are
+fast and do not go near the extraction ladder.
+
+**Scraped** — Phenom, Oracle Taleo, Apple, Uber, client-rendered
+(React/Vue/Angular) pages, and generic HTML. These go through the ladder.
+
+#### In-house sites
+
+Five boards run on no ATS at all. They are worth calling out because they are
+where the generic path earns its keep — and because they break differently
+from platforms:
+
+| Company | How it is read |
+| --- | --- |
+| **Apple** | Server-rendered listing, JSON API for each posting's detail |
+| **Uber** | 205 KB shell; the listings arrive by XHR, so the adapter calls that endpoint |
+| **D. E. Shaw India** | Next.js; the board is server-rendered into `__NEXT_DATA__` and read by the embedded-JSON tier |
+| **Wells Fargo** | Bootstrap card markup read by CSS selectors; refuses plain HTTP clients with 403 |
+| **Salesforce** | Currently failing at every tier |
+
+Apple and Uber have their own adapters because their sites are theirs alone.
+An adapter for a *shared* platform never hardcodes one tenant's values — board
+token, site id, locale, region host and facet names are all derived from the
+career URL or the API response, because the same adapter serves every other
+customer of that platform.
+
+#### Adding a board
+
+Paste the URL into `config/portals.txt`. Detection identifies the platform
+from the hostname, or failing that from the page body, and caches the answer.
+Two things are worth knowing before you trust a new board:
+
+- **A company's careers page is often not its board.** PhonePe's is a
+  marketing shell over SmartRecruiters; Adyen's is a Nuxt app over Greenhouse.
+  Point at what the page fetches from, not at the page.
+- **Check a posting's link by its content, not its status code.** Every broken
+  link this project has shipped answered `200` — an API self-link serving JSON,
+  a vanity domain's own 404 page, an SPA that answers for any id.
 
 ---
 
@@ -265,9 +373,11 @@ opens and scans continue on tiers 1–4.
 - **Location parsing is best-effort.** The country list covers the markets these
   boards serve, not the world. The raw string is always retained alongside the
   parse, so a mis-parse degrades matching rather than losing information.
-- **Taleo and SuccessFactors are the weakest adapters.** Both platforms are
-  heavily themed per tenant; the built-in selectors cover the common
-  generations, and anything else falls through to the learner.
+- **Taleo is the weakest adapter.** The platform is heavily themed per
+  tenant; the built-in selectors cover the common generations, and anything
+  else falls through to the learner. SuccessFactors was in the same position
+  until its Career Site Builder generation got a JSON path; older
+  server-rendered tenants still rely on selectors.
 - **No vector search.** Semantic matching is an LLM call per shortlisted job.
   Embeddings would be cheaper at volume; `matcher/base.py` is the interface to
   implement.
