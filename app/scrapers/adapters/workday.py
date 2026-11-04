@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import re
 from typing import Any, ClassVar
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from app.core.errors import PermanentFetchError
 from app.core.logging import get_logger
@@ -32,6 +32,9 @@ _LOCALE_RE = re.compile(r"^[a-z]{2}(-[A-Za-z]{2})?$")
 
 PAGE_SIZE = 20
 MAX_PAGES = 50
+
+#: Query parameters that are UI state rather than facet ids.
+_NON_FACET_PARAMS = frozenset({"q", "sort", "offset", "limit", "page", "jobFamily"})
 
 
 class WorkdayScraper(BaseScraper):
@@ -75,6 +78,25 @@ class WorkdayScraper(BaseScraper):
         origin = f"{parsed.scheme}://{parsed.netloc}"
         return origin, match.group("tenant"), segments[0]
 
+    def _applied_facets(self) -> dict[str, list[str]]:
+        """Re-express the career URL's own filters for the API.
+
+        The CXS endpoint takes filters as ``appliedFacets``, while the public
+        URL carries them as query parameters — ``?locationCountry=<id>``. Sending
+        an empty object instead means every board is fetched whole: a tenant with
+        more postings than ``MAX_PAGES * PAGE_SIZE`` is then silently truncated,
+        and because Workday does not sort by location, the postings lost are
+        not the ones you would choose to lose.
+        """
+        query = parse_qs(urlparse(self.company.career_url).query)
+        return {
+            key: values
+            for key, values in query.items()
+            # Facet ids only. Workday's own UI state (?q=, ?sort=) is not a facet
+            # and the endpoint rejects the whole request if it is sent one.
+            if values and key not in _NON_FACET_PARAMS
+        }
+
     def _endpoint(self) -> str:
         if self.company.api_endpoint:
             return self.company.api_endpoint
@@ -91,6 +113,7 @@ class WorkdayScraper(BaseScraper):
         against someone else's server.
         """
         endpoint = self._endpoint()
+        facets = self._applied_facets()
         collected: list[dict[str, Any]] = []
         total: int | None = None
 
@@ -99,7 +122,7 @@ class WorkdayScraper(BaseScraper):
             payload = self.fetcher.post_json(
                 endpoint,
                 {
-                    "appliedFacets": {},
+                    "appliedFacets": facets,
                     "limit": PAGE_SIZE,
                     "offset": offset,
                     "searchText": "",

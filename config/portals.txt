@@ -38,10 +38,31 @@ https://www.deshawindia.com/careers/work-with-us | D. E. Shaw India
 https://jpmc.fa.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1001/jobs?location=Bengaluru%2C+Karnataka%2C+India&locationId=300000081145775&locationLevel=city&mode=location&radius=25&radiusUnit=MI | JPMorgan Chase
 https://jobs.uber.com/en/jobs/?location=Bengaluru&radius=100 | Uber
 https://www.salesforce.com/company/careers/jobs/?country=India&region=Karn%C4%81taka&location=Bangalore&page=1 | Salesforce
-# ServiceNow answers non-browser clients with HTTP 403 (bot protection), so it
-# fails every run and inflates the failure count. Uncomment once we have a way
-# in — a render might get through, but that has not been tested.
-# https://careers.servicenow.com/jobs/?search=&country=India&region=Karnataka&location=Bangalore&pagesize=20 | ServiceNow
+
+# --- Fintech & payments ----------------------------------------------------
+https://jobs.lever.co/cred | CRED
+https://job-boards.greenhouse.io/slice | slice
+https://jobs.ashbyhq.com/navi | Navi
+https://careers.mastercard.com/us/en/search-results | Mastercard
+
+# --- Banks -----------------------------------------------------------------
+# Workday takes filters as appliedFacets, not query parameters, and the adapter
+# translates them. Keep the facet: Target has 2,000 postings worldwide and 67
+# in India, and an unfiltered fetch truncates at the pagination cap instead.
+https://barclays.wd3.myworkdayjobs.com/External_Career_Site_Barclays | Barclays
+https://citi.wd5.myworkdayjobs.com/2?Country_and_Jurisdiction=c4f78be1a8f14da0ab49ce1162348a5e | Citi
+
+# --- Product & infra -------------------------------------------------------
+https://job-boards.greenhouse.io/databricks | Databricks
+https://jobs.ashbyhq.com/snowflake | Snowflake
+https://job-boards.greenhouse.io/rubrik | Rubrik
+https://job-boards.greenhouse.io/zscaler | Zscaler
+https://target.wd5.myworkdayjobs.com/targetcareers?Location_Country=c4f78be1a8f14da0ab49ce1162348a5e | Target
+https://expedia.wd108.myworkdayjobs.com/search | Expedia
+https://careers.qualcomm.com/careers | Qualcomm
+# careers.servicenow.com answers non-browser clients with 403, but the board
+# behind it is SmartRecruiters, which has a public API and no bot wall.
+https://jobs.smartrecruiters.com/servicenow | ServiceNow
 
 # A hand-built careers page with no recognisable ATS, for watching the
 # self-learning path work. Local only — it points at your own machine, so it

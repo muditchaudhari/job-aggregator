@@ -886,3 +886,45 @@ class TestEmbeddedJsonHarvestsWrappedRecords:
 
         assert len(jobs) == 1
         assert jobs[0].title.startswith("Software Engineer")
+
+
+class TestWorkdayPassesUrlFiltersAsFacets:
+    """Workday boards were fetched whole, then filtered locally.
+
+    The CXS endpoint takes filters as ``appliedFacets`` while the public URL
+    carries them as query parameters, and the adapter sent an empty object.
+    Any tenant with more postings than MAX_PAGES * PAGE_SIZE was silently
+    truncated at the cap — Target has 2,000 worldwide and 67 in India — and
+    Workday does not sort by location, so the postings lost were arbitrary.
+    """
+
+    @staticmethod
+    def _facets(career_url: str) -> dict:
+        from app.models.company import Company
+        from app.models.enums import ATSType
+        from app.scrapers.adapters.workday import WorkdayScraper
+
+        company = Company(
+            name="Target", career_url=career_url, website="target.com",
+            ats_type=ATSType.WORKDAY,
+        )
+        return WorkdayScraper(company, None)._applied_facets()
+
+    def test_a_location_facet_is_forwarded(self) -> None:
+        facets = self._facets(
+            "https://target.wd5.myworkdayjobs.com/targetcareers"
+            "?Location_Country=c4f78be1a8f14da0ab49ce1162348a5e"
+        )
+
+        assert facets == {"Location_Country": ["c4f78be1a8f14da0ab49ce1162348a5e"]}
+
+    def test_an_unfiltered_url_sends_no_facets(self) -> None:
+        assert self._facets("https://target.wd5.myworkdayjobs.com/targetcareers") == {}
+
+    def test_ui_state_is_not_sent_as_a_facet(self) -> None:
+        """The endpoint rejects the whole request if handed a non-facet key."""
+        facets = self._facets(
+            "https://visa.wd5.myworkdayjobs.com/Visa?locationCountry=abc&q=engineer&sort=desc"
+        )
+
+        assert facets == {"locationCountry": ["abc"]}
