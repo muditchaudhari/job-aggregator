@@ -928,3 +928,91 @@ class TestWorkdayPassesUrlFiltersAsFacets:
         )
 
         assert facets == {"locationCountry": ["abc"]}
+
+
+class TestSuccessFactorsCareerSiteBuilder:
+    """A SuccessFactors tenant extracted nothing at every selector tier.
+
+    It was not a themed variant of the server-rendered site the adapter knew.
+    Career Site Builder ships a search page with no postings in it and fetches
+    them from /services/recruiting/v1/jobs, so no selector could ever match.
+
+    The paging key was the trap. ``from``, ``offset`` and ``start`` are all
+    accepted and silently ignored, so every page returned page one. The result
+    order is also unstable between identical calls, which means "the ids
+    changed" does not prove paging worked — only distinct coverage does:
+    across ten pages, ``pageNumber`` yielded 73 distinct ids where the others
+    yielded 16, against 16 for the same call repeated.
+    """
+
+    URL = (
+        "https://jobs.standardchartered.com/search/?skillsSearch=false"
+        "&facetFilters=%7B%22jobLocationCity%22%3A%5B%22Bangalore%22%5D%7D&pageNumber=0"
+    )
+
+    @staticmethod
+    def _scraper(career_url: str):
+        from app.models.company import Company
+        from app.models.enums import ATSType
+        from app.scrapers.adapters.successfactors import SuccessFactorsScraper
+
+        company = Company(
+            name="Standard Chartered", career_url=career_url,
+            website="sc.com", ats_type=ATSType.SUCCESSFACTORS,
+        )
+        return SuccessFactorsScraper(company, None)
+
+    def test_facet_filters_are_carried_from_the_url(self) -> None:
+        """Dropping them fetches the global board: 1,039 against 100."""
+        assert self._scraper(self.URL)._csb_filters() == {"jobLocationCity": ["Bangalore"]}
+
+    def test_an_unfiltered_url_sends_no_filters(self) -> None:
+        assert self._scraper("https://jobs.standardchartered.com/search/")._csb_filters() == {}
+
+    def test_malformed_filters_do_not_raise(self) -> None:
+        bad = "https://jobs.standardchartered.com/search/?facetFilters=not-json"
+        assert self._scraper(bad)._csb_filters() == {}
+
+    def test_json_rows_become_jobs_with_working_links(self) -> None:
+        """The slug arrives percent-encoded but carrying HTML entities.
+
+        Leaving the entity in puts a literal "&amp;" in the link. Verified in
+        a browser that the unescaped form opens the posting.
+        """
+        payload = {
+            "jobSearchResult": [
+                {"response": {
+                    "id": "52404",
+                    "unifiedStandardTitle": "Senior Manager, Deal Advisory &amp; Research COE",
+                    "urlTitle": "Senior-Manager%2C-Deal-Advisory-&amp;-Research-COE",
+                    "jobLocationShort": ["Bangalore, IND "],
+                    "mfield1": ["Corporate & Commercial Banking"],
+                    "unifiedStandardStart": "11/09/2026",
+                }}
+            ],
+            "totalJobs": 1,
+        }
+        jobs = self._scraper(self.URL)._jobs_from_csb(payload)
+
+        assert jobs[0].title == "Senior Manager, Deal Advisory & Research COE"
+        assert jobs[0].url == (
+            "https://jobs.standardchartered.com/job/"
+            "Senior-Manager%2C-Deal-Advisory-&-Research-COE/52404-en_GB"
+        )
+        assert "&amp;" not in jobs[0].url
+        assert jobs[0].external_id == "52404"
+        assert jobs[0].location == "Bangalore, IND"
+
+    def test_a_row_without_an_id_gets_no_link(self) -> None:
+        payload = {"jobSearchResult": [{"response": {"unifiedStandardTitle": "X"}}]}
+
+        assert self._scraper(self.URL)._jobs_from_csb(payload)[0].url is None
+
+    def test_the_paging_key_is_pageNumber(self) -> None:
+        """Pinned because the alternatives fail silently rather than erroring."""
+        import inspect
+
+        from app.scrapers.adapters.successfactors import SuccessFactorsScraper
+
+        source = inspect.getsource(SuccessFactorsScraper._csb_page)
+        assert '"pageNumber": page' in source

@@ -76,6 +76,11 @@ https://jobs.lever.co/zeta | Zeta
 # domain, which uses /<locale>/sites/<site>/job/<id> — the Oracle-hosted
 # /hcmUI/CandidateExperience path redirects to its 404 page there.
 https://careers.americanexpress.com/en/sites/CX_1/jobs?location=Bengaluru%2C+KA%2C+India&locationId=300000032718926&locationLevel=city&mode=location&radius=25&radiusUnit=MI | American Express
+# SuccessFactors Career Site Builder: the search page holds no postings and
+# loads them from /services/recruiting/v1/jobs. Keep facetFilters — it is read
+# straight out of this URL, and without it the whole global board is fetched
+# (1,039 postings against 100 in Bangalore).
+https://jobs.standardchartered.com/search/?facetFilters=%7B%22jobLocationCity%22%3A%5B%22Bangalore%22%5D%7D | Standard Chartered
 https://jobs.ashbyhq.com/bureau | Bureau
 https://job-boards.greenhouse.io/coinbase | Coinbase
 
